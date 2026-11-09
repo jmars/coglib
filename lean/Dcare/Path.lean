@@ -1402,4 +1402,139 @@ def mintCount : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ �
   | _, _, _, @Typed.weak _ _ _ _ _ h => mintCount h
   | _, _, _, _ => 0
 
+/-! ## The trace family: no archival at clean contexts -/
+
+/-- Inert types carry no trace-demand and no knower-demand. -/
+theorem allInert_notNeedsT : ∀ a : Ty, allInert a = true → NeedsT a → False := by
+  intro a
+  induction a with
+  | content | knower | knowledge | value | stream | unit => intro _ h; exact h
+  | trace => intro hi _; exact Bool.noConfusion hi
+  | later a' ih => intro hi h; exact ih hi h
+  | tensor a' b' iha ihb =>
+      intro hi h
+      rcases h with h | h
+      · exact iha (by simp [allInert] at hi; exact hi.1) h
+      · exact ihb (by simp [allInert] at hi; exact hi.2) h
+  | arrow a' b' iha ihb =>
+      intro hi h
+      exact ihb (by simp [allInert] at hi; exact hi.2) h.1
+
+theorem allInert_notNeedsK : ∀ a : Ty, allInert a = true → NeedsK a → False := by
+  intro a
+  induction a with
+  | content | knowledge | value | stream | unit | trace => intro _ h; exact h
+  | knower => intro hi _; exact Bool.noConfusion hi
+  | later a' _ => intro _ h; exact h
+  | tensor a' b' iha ihb =>
+      intro hi h
+      rcases h with h | h
+      · exact iha (by simp [allInert] at hi; exact hi.1) h
+      · exact ihb (by simp [allInert] at hi; exact hi.2) h
+  | arrow a' b' iha ihb =>
+      intro hi h
+      exact ihb (by simp [allInert] at hi; exact hi.2) h.1
+
+/-- A clean hypothesis is neither trace- nor knower-carrying: the token
+itself carries neither demand, and inert types carry none. -/
+theorem binderOK_notNeedsT {a : Ty} (hb : binderOK a = true) (h : NeedsT a) : False := by
+  by_cases hac : a = Ty.content
+  · subst hac; exact h
+  · have hq : (a == Ty.content) = false := by
+      rcases Bool.eq_false_or_eq_true (a == Ty.content) with h1 | h1
+      · exact absurd (eq_of_beq h1) hac
+      · exact h1
+    rw [binderOK, hq, Bool.false_or] at hb
+    exact allInert_notNeedsT _ hb h
+
+theorem binderOK_notNeedsK {a : Ty} (hb : binderOK a = true) (h : NeedsK a) : False := by
+  by_cases hac : a = Ty.content
+  · subst hac; exact h
+  · have hq : (a == Ty.content) = false := by
+      rcases Bool.eq_false_or_eq_true (a == Ty.content) with h1 | h1
+      · exact absurd (eq_of_beq h1) hac
+      · exact h1
+    rw [binderOK, hq, Bool.false_or] at hb
+    exact allInert_notNeedsK _ hb h
+
+/-- Clean contexts split cleanly. -/
+theorem cleanctx_split {E : List Ty} (hcc : CleanCtx E) {Γ Δ : List Ty} (hs : Γ ++ Δ = E) :
+    CleanCtx Γ ∧ CleanCtx Δ := by
+  constructor
+  · intro i b hpos
+    have hlt : i < Γ.length := List.get?_some_lt hpos
+    exact hcc i b (by rw [← hs, List.get?_append_lt hlt]; exact hpos)
+  · intro i b hpos
+    have hlt : i < Δ.length := List.get?_some_lt hpos
+    refine hcc (Γ.length + i) b ?_
+    rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length i), Nat.add_sub_cancel_left]
+    exact hpos
+
+/-- The domain carries content somewhere (the token-fire or a
+positive-position content-carrying domain). -/
+def CarriesContent (a : Ty) : Prop := a = Ty.content ∨ NeedsC a
+
+def HasTokenDomain : Ty → Prop
+  | .arrow a σ => CarriesContent a ∨ HasTokenDomain σ
+  | _ => False
+
+/-- Inert types ban content everywhere, so content-need contradicts. -/
+theorem needsC_notallInert : ∀ a : Ty, NeedsC a → allInert a = false := by
+  intro a
+  induction a with
+  | content => intro _; rfl
+  | knower | knowledge | value | stream | trace | unit => intro h; exact h.elim
+  | later a' _ => intro h; exact h.elim
+  | tensor a' b' iha ihb =>
+      intro h
+      rcases h with h | h
+      · simp only [allInert, iha h, Bool.false_and]
+      · simp only [allInert, ihb h, Bool.and_false]
+  | arrow a' b' iha ihb =>
+      intro h
+      simp only [allInert, ihb h.1, Bool.and_false]
+
+/-- A token-domain spine is never inert. -/
+theorem hasTokenDomain_notallInert : ∀ τ : Ty, HasTokenDomain τ → allInert τ = false := by
+  intro τ
+  cases τ with
+  | arrow a σ =>
+      intro hcar
+      rcases hcar with hc | hs
+      · rcases hc with rfl | hnc
+        · simp [allInert]
+        · simp [allInert, needsC_notallInert _ hnc]
+      · simp [allInert, hasTokenDomain_notallInert _ hs]
+  | content | knower | knowledge | value | stream | trace | unit | later _ | tensor _ _ =>
+      intro h
+      exact False.elim h
+
+/-- Live-binder inversion for λ. -/
+theorem liveBind_lam_inv {Γ : List Ty} {a b : Ty} {body : Term} (h : Typed (a :: Γ) body b)
+    (hl : liveBind (Typed.lam h) = 0) : binderOK a = true ∧ liveBind h = 0 := by
+  simp only [liveBind] at hl
+  by_cases hb : binderOK a = true
+  · rw [if_pos hb] at hl
+    exact ⟨hb, by omega⟩
+  · rw [if_neg hb] at hl
+    omega
+
+/-- Live-binder inversion for lete. -/
+theorem liveBind_lete_inv {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+    {ht : Typed Γ₁ t (.tensor a b)}
+    {hb : Typed (b :: a :: Γ₂) body c} (hs : Γ₁ ++ Γ₂ = E)
+    (hl : liveBind (Typed.lete ht hb hs) = 0) :
+    binderOK a = true ∧ binderOK b = true ∧ liveBind ht = 0 ∧ liveBind hb = 0 := by
+  simp only [liveBind] at hl
+  by_cases h1 : binderOK a = true
+  · rw [if_pos h1] at hl
+    by_cases h2 : binderOK b = true
+    · rw [if_pos h2] at hl
+      exact ⟨h1, h2, by omega, by omega⟩
+
+    · rw [if_neg h2] at hl
+      omega
+  · rw [if_neg h1] at hl
+    omega
+
 end Dcare
