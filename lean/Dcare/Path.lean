@@ -308,11 +308,20 @@ theorem fix_knower_supply {Γ : List Ty} {a : Ty} {body : Term}
     exact Bool.noConfusion hnlin
   · exact ⟨i, b, hpos, hk⟩
 
-/-! ## The closed-liveness base -/
+/-! ## The closed-liveness base (ascent foundations) -/
 
 /-- No closed stream exists — the barren world (stream ↦ False) in one
 line. Streams are knower-sustained; from nothing, nothing flows. -/
 theorem no_closed_stream {t : Term} (h : Typed [] t Ty.stream) : False :=
+  (sound h True.intro).elim
+
+/-- No closed knowledge: knowledge is reduction's output, and reduction
+reads only the live stream. -/
+theorem no_closed_knowledge {t : Term} (h : Typed [] t Ty.knowledge) : False :=
+  (sound h True.intro).elim
+
+/-- No closed value: valuation reads only the live stream. -/
+theorem no_closed_value {t : Term} (h : Typed [] t Ty.value) : False :=
   (sound h True.intro).elim
 
 /-! ## The trace-token account (tFlowEq) -/
@@ -1268,6 +1277,129 @@ def arrowFixCount : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t �
   | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _ => arrowFixCount ht + arrowFixCount hu
   | _, _, _, @Typed.contr _ _ _ _ _ h => arrowFixCount h
   | _, _, _, @Typed.weak _ _ _ _ _ h => arrowFixCount h
+  | _, _, _, _ => 0
+
+/-! ## The measured boundary: binder-level killers (negative result) -/
+
+/-- The killer-for-content type: consumes a content token, returns unit. -/
+def ACU : Ty := .arrow .content .unit
+
+/-- The (A′)-shaped statement "unit/EndsInUnit at a token-context with no
+killer-HYPOTHESES is impossible" is FALSE, and this is the witness: the
+killer enters as a λ-DOMAIN — a freely written annotation — not as a
+context hypothesis. The body fires it on the token, perfectly legally.
+
+  λ(k : arrow content unit). app (var 0) (var 0)
+    : arrow (arrow content unit) unit   at [content]
+
+Consequence (measured, do not re-derive): the no-killer condition must
+hold at the BINDER level (no killer-shaped λ-domain or lete-component
+anywhere in the derivation), and discharging THAT condition at a
+`[content] ⊢ unit` root is exactly the ascent: killer-domains are free
+to write, so the theorem must show their values cannot die in a
+unit-rooted tree — their deaths are fires needing arguments of ever
+deeper annotated types, bottoming at closed values, all of which are
+dead (no closed content/knower/stream/▷stream; no nil/terminate in a
+mint-free tree). The same ascent covers the ▷stream-annotation
+smugglers and the producer-spine: the three onion layers are ONE lemma.
+-/
+def killerBinder : Term := .lam ACU (.app (.var 0) (.var 0))
+
+def killerBinderTyped : Typed [Ty.content] killerBinder (.arrow ACU .unit) :=
+  Typed.lam
+    (Typed.app (Γ := [ACU]) (Δ := [Ty.content]) Typed.var Typed.var rfl)
+
+/-- Unit AT a killer-carrying context: the no-killer-hypothesis condition
+is load-bearing and cannot be dropped — the body of the witness above. -/
+theorem unit_at_killer_context :
+    ∃ t, Nonempty (Typed [ACU, Ty.content] t Ty.unit) :=
+  ⟨.app (.var 0) (.var 0), ⟨Typed.app (Γ := [ACU]) (Δ := [Ty.content])
+    Typed.var Typed.var rfl⟩⟩
+
+/-- And the witness itself: a killer-for-content VALUES exist at a
+token context with no killer hypothesis in sight — the killer is the
+annotation, and annotations are free. -/
+theorem killer_binder_witness :
+    ∃ t, Nonempty (Typed [Ty.content] t (.arrow ACU .unit)) :=
+  ⟨killerBinder, ⟨killerBinderTyped⟩⟩
+
+/-! ## The conditional kill: unit/inert conclusions at token contexts -/
+
+/-- Fully inert: no live subtype ANYWHERE, domains included. Content,
+trace, stream, knower and ▷-of-live are live; knowledge, value and unit
+are inert; tensors and arrows are inert iff both parts are. This one
+predicate subsumes the no-killer, no-smuggler and no-annotation
+conditions of the earlier attempts: a killer's type contains its token
+in the domain, a smuggler's contains ▷stream, an annotation-supply
+contains its live payload. -/
+def allInert : Ty → Bool
+  | .content | .trace | .stream | .knower => false
+  | .knowledge | .value | .unit => true
+  | .later a => allInert a
+  | .tensor a b | .arrow a b => allInert a && allInert b
+
+/-- Ends-in-inert: an arrow-spine whose eventual codomain is inert.
+unit itself is the degenerate spine. -/
+def endsInInert : Ty → Bool
+  | .arrow _ σ => endsInInert σ
+  | τ => allInert τ
+
+/-- The spine has a content domain somewhere: the producers whose fire
+consumes the token. -/
+def hasContentDomain : Ty → Bool
+  | .arrow a σ => (a == Ty.content) || hasContentDomain σ
+  | _ => false
+
+/-- A hypothesis is OK for the clean context: the token itself, or
+fully inert. -/
+def binderOK (a : Ty) : Bool := (a == Ty.content) || allInert a
+
+/-- The spine has a KILL domain: a content domain (the token-fire) or a
+live domain (excluded from hypotheses by CleanCtx and from binders by
+liveBind — so a producer with a kill domain must bottom at a λ whose
+binder is the token or at a banned hypothesis). -/
+def hasKillDomain : Ty → Bool
+  | .arrow a σ => (a == Ty.content) || (!binderOK a) || hasKillDomain σ
+  | _ => false
+
+/-- Clean context: every hypothesis is the token or fully inert. -/
+def CleanCtx (Γ : List Ty) : Prop :=
+  ∀ (i : Nat) (b : Ty), Γ[i]? = some b → binderOK b = true
+
+/-- Live binders: λ-domains and lete-components that are neither the
+token nor inert. The conditional kill assumes ZERO of these; discharging
+that at a `[content]`-rooted tree is the ascent (the annotation-values'
+death-chase), and is the residual unit. -/
+def liveBind : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Nat
+  | _, _, _, @Typed.lam _ a _ _ h =>
+      (if binderOK a then 0 else 1) + liveBind h
+  | _, _, _, @Typed.lete _ _ _ a b _ _ _ ht hb _ =>
+      (if binderOK a then 0 else 1) + (if binderOK b then 0 else 1)
+        + liveBind ht + liveBind hb
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _ => liveBind hf + liveBind ha
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _ => liveBind hl + liveBind hr
+  | _, _, _, @Typed.next _ _ _ h => liveBind h
+  | _, _, _, @Typed.fix _ _ _ _ h => liveBind h
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht _ => liveBind hc + liveBind ht
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _ => liveBind ht + liveBind hu
+  | _, _, _, @Typed.contr _ _ _ _ _ h => liveBind h
+  | _, _, _, @Typed.weak _ _ _ _ _ h => liveBind h
+  | _, _, _, _ => 0
+
+/-- Trace mints: nil and terminate nodes (a trace from nothing). -/
+def mintCount : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Nat
+  | _, _, _, Typed.nil => 1
+  | _, _, _, Typed.terminate => 1
+  | _, _, _, @Typed.lam _ _ _ _ h => mintCount h
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _ => mintCount hf + mintCount ha
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _ => mintCount hl + mintCount hr
+  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _ => mintCount ht + mintCount hb
+  | _, _, _, @Typed.next _ _ _ h => mintCount h
+  | _, _, _, @Typed.fix _ _ _ _ h => mintCount h
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht _ => mintCount hc + mintCount ht
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _ => mintCount ht + mintCount hu
+  | _, _, _, @Typed.contr _ _ _ _ _ h => mintCount h
+  | _, _, _, @Typed.weak _ _ _ _ _ h => mintCount h
   | _, _, _, _ => 0
 
 end Dcare
