@@ -1,0 +1,6 @@
+name = "Dcare"
+version = "0.1.0"
+defaultTargets = ["Dcare"]
+
+[[lean_lib]]
+name = "Dcare"
