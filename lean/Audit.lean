@@ -10,6 +10,7 @@ import Dcare.Adversaries
 import Dcare.Constructive
 import Dcare.SelfApp
 import Dcare.Path
+import Dcare.Subst
 
 /-!
 # Axiom audit (run by scripts/lean-check.sh, NOT part of the library)
@@ -104,6 +105,8 @@ Rules:
 #print axioms Dcare.pos_introduced
 #print axioms Dcare.Path_clean
 #print axioms Dcare.parent_locate
+#print axioms Dcare.substG_tsize
+#print axioms Dcare.linear_redex_shrink
 #print axioms Dcare.sFlowEq
 #print axioms Dcare.sMint_nonpos
 #print axioms Dcare.stream_origin
