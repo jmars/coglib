@@ -3034,4 +3034,259 @@ theorem no_deep_consumer {Γ : List Ty} {X b : Ty} {f : Term}
       (Or.inl (Or.inr (Or.inr hdc))) hfc hmc hp hcc
   exact deepConsume_notDomOK hdc (hc2 0 _ List.get?_zero_cons')
 
+/-! ## The composition: vanishing at the park-free fragment
+
+`flowEq`'s arithmetic forces a sink at a fix-free `[content] ⊢ unit`
+root (`sinks = 1 + genFire`); the extraction below carries the
+discipline down to the sink's killed premise; the premise dies by its
+own sort's kill — the trace by `no_trace_at_oblig`, the stream-tail by
+`no_stream_without_supply`. The token-march of the interval-4 design
+(`kill_oblig`) is never taken: the accounting already transmuted the
+token into sink-counts, and each sink dies at its own sort. Every
+wall-case of the march is an artifact of walking the token; on this
+route they cannot arise. -/
+
+/-- A fix-free tree carries no unroll-credit either: `fixMint` only
+mints at fix nodes, so the two counters vanish together. -/
+theorem fixMint_eq_zero :
+    ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    fixCount h = 0 → fixMint h = 0
+  | _, _, _, @Typed.fix _ _ _ _ _, hf => by simp only [fixCount] at hf; omega
+  | _, _, _, @Typed.lam _ _ _ _ h, hf => by
+      simpa only [fixCount, fixMint] using fixMint_eq_zero h hf
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _, hfc => by
+      obtain ⟨h1, h2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      simp only [fixMint]
+      rw [fixMint_eq_zero hf h1, fixMint_eq_zero ha h2]
+      omega
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _, hf => by
+      obtain ⟨h1, h2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hf
+      simp only [fixMint]
+      rw [fixMint_eq_zero hl h1, fixMint_eq_zero hr h2]
+      omega
+  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _, hf => by
+      obtain ⟨h1, h2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hf
+      simp only [fixMint]
+      rw [fixMint_eq_zero ht h1, fixMint_eq_zero hb h2]
+      omega
+  | _, _, _, @Typed.next _ _ _ h, hf => by
+      simpa only [fixCount, fixMint] using fixMint_eq_zero h hf
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht _, hf => by
+      obtain ⟨h1, h2⟩ : fixCount hc = 0 ∧ fixCount ht = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hf
+      simp only [fixMint]
+      rw [fixMint_eq_zero hc h1, fixMint_eq_zero ht h2]
+      omega
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _, hf => by
+      obtain ⟨h1, h2⟩ : fixCount ht = 0 ∧ fixCount hu = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hf
+      simp only [fixMint]
+      rw [fixMint_eq_zero ht h1, fixMint_eq_zero hu h2]
+      omega
+  | _, _, _, @Typed.contr _ _ _ _ _ h, hf => by
+      simpa only [fixCount, fixMint] using fixMint_eq_zero h hf
+  | _, _, _, @Typed.weak _ _ _ _ _ h, hf => by
+      simpa only [fixCount, fixMint] using fixMint_eq_zero h hf
+  | _, _, _, Typed.var, _ => by simp only [fixMint]
+  | _, _, _, Typed.unit, _ => by simp only [fixMint]
+  | _, _, _, Typed.nil, _ => by simp only [fixMint]
+  | _, _, _, Typed.gen, _ => by simp only [fixMint]
+  | _, _, _, Typed.red, _ => by simp only [fixMint]
+  | _, _, _, Typed.obj, _ => by simp only [fixMint]
+  | _, _, _, Typed.terminate, _ => by simp only [fixMint]
+
+/-- An obligation context supplies no stream-demand: the token's kind,
+inert types, and gap-class types need neither a stream nor a knower. -/
+theorem oblctx_noSSupply {Γ : List Ty} (hcc : OblCtx Γ) :
+    ∀ (i : Nat) (a : Ty), Γ[i]? = some a → ¬ SSupply a := by
+  intro (i : Nat) (a : Ty) hpos
+  have hd := hcc i a hpos
+  intro hsup
+  rcases hsup with h | h
+  · exact DomOK_notNeedsS hd h
+  · exact DomOK_notNeedsK hd h
+
+/-- SINK-EXTRACTION with discipline-carry: in a park-free tree at an
+obligation context, a sink node's KILLED premise — the snoc's trace, the
+cons's `▷stream` tail — is itself at an obligation context, park-free,
+with clean counters. The discipline descends to the sink; this is the
+piece that turns `flowEq`'s arithmetic into a proof. -/
+theorem sinks_extract :
+    ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ),
+    0 < sinks h → fixCount h = 0 → mintCount h = 0 → ParkFree h → OblCtx Γ →
+    (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' Ty.trace),
+        fixCount ht = 0 ∧ mintCount ht = 0 ∧ ParkFree ht ∧ OblCtx Γ')
+    ∨ (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' (.later Ty.stream)),
+        fixCount ht = 0 ∧ mintCount ht = 0 ∧ ParkFree ht ∧ OblCtx Γ')
+  | _, _, _, @Typed.snoc E Γ Δ t u ht hu hs, _, hfc, hmc, hp, hcc => by
+      obtain ⟨hfc1, _⟩ : fixCount ht = 0 ∧ fixCount hu = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount ht = 0 ∧ mintCount hu = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hpt, _⟩ := hp
+      obtain ⟨hcc1, _⟩ := OblCtx_split hcc hs
+      exact Or.inl ⟨Γ, t, ht, hfc1, hmc1, hpt, hcc1⟩
+  | _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs, _, hfc, hmc, hp, hcc => by
+      obtain ⟨_, hfc2⟩ : fixCount hc = 0 ∧ fixCount ht = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨_, hmc2⟩ : mintCount hc = 0 ∧ mintCount ht = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨_, hpt⟩ := hp
+      obtain ⟨_, hcc2⟩ := OblCtx_split hcc hs
+      exact Or.inr ⟨Δ, tl, ht, hfc2, hmc2, hpt, hcc2⟩
+  | _, _, _, @Typed.lam Γ a b body h, hsink, hfc, hmc, hp, hcc => by
+      obtain ⟨hda, hpf⟩ := ParkFree_lam_inv h hp
+      refine sinks_extract h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc) hpf ?_
+      intro (i : Nat) (b' : Ty) hpos
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          exact hda
+      | succ m =>
+          rw [List.get?_succ_cons'] at hpos
+          exact hcc m b' hpos
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hsink, hfc, hmc, hp, hcc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hp1, hp2⟩ := hp
+      obtain ⟨hcc1, hcc2⟩ := OblCtx_split hcc hs
+      simp only [sinks] at hsink
+      by_cases hsl : 0 < sinks hf
+      · exact sinks_extract hf hsl hfc1 hmc1 hp1 hcc1
+      · have hsr : 0 < sinks ha := by omega
+        exact sinks_extract ha hsr hfc2 hmc2 hp2 hcc2
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hsink, hfc, hmc, hp, hcc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hl = 0 ∧ mintCount hr = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hp1, hp2⟩ := hp
+      obtain ⟨hcc1, hcc2⟩ := OblCtx_split hcc hs
+      simp only [sinks] at hsink
+      by_cases hsl : 0 < sinks hl
+      · exact sinks_extract hl hsl hfc1 hmc1 hp1 hcc1
+      · have hsr : 0 < sinks hr := by omega
+        exact sinks_extract hr hsr hfc2 hmc2 hp2 hcc2
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hsink, hfc, hmc, hp,
+      hcc => by
+      obtain ⟨hda, hdb, hpt, hpb⟩ := ParkFree_lete_inv hs hp
+      obtain ⟨hfc1, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hcc1, hcc2⟩ := OblCtx_split hcc hs
+      simp only [sinks] at hsink
+      by_cases hst : 0 < sinks ht
+      · exact sinks_extract ht hst hfc1 hmc1 hpt hcc1
+      · have hsb : 0 < sinks hb := by omega
+        refine sinks_extract hb hsb hfc2 hmc2 hpb ?_
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hdb
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hda
+            | succ k =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc2 k b' hpos
+  | _, _, _, @Typed.next Γ a t h, hsink, hfc, hmc, hp, hcc =>
+      sinks_extract h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc) hp hcc
+  | _, _, _, @Typed.contr Γ k t τ hk h, hsink, hfc, hmc, hp, hcc => by
+      refine sinks_extract h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc) (by simpa only [ParkFree] using hp)
+        ?_
+      intro (i : Nat) (b' : Ty) hpos
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          exact hcc 0 _ List.get?_zero_cons'
+      | succ m =>
+          cases m with
+          | zero =>
+              rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+              injection hpos with he
+              subst he
+              exact hcc 0 _ List.get?_zero_cons'
+          | succ m' =>
+              rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+              exact hcc (m' + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+  | _, _, _, @Typed.weak Γ k t τ hk h, hsink, hfc, hmc, hp, hcc =>
+      sinks_extract h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc) (by simpa only [ParkFree] using hp)
+        (by
+          intro (i : Nat) (b' : Ty) hpos
+          exact hcc (i + 1) b' (by rw [List.get?_succ_cons']; exact hpos))
+  | _, _, _, @Typed.fix _ _ _ _ _, _, hfc, _, _, _ =>
+      absurd hfc (by simp only [fixCount]; omega)
+  | _, _, _, Typed.var, hsink, _, _, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.unit, hsink, _, _, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.nil, hsink, _, _, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.gen, hsink, _, _, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.red, hsink, _, _, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.obj, hsink, _, _, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.terminate, hsink, _, _, _, _ => by
+      simp only [sinks] at hsink; omega
+
+/-- NO VANISHING, park-free fragment: with every λ-domain and
+lete-component discipline-OK (a strictly weaker restriction than
+`liveBind = 0`, which forces every domain binderOK), a fix-free
+`[content] ⊢ unit` is impossible. The token never vanishes because
+nothing can archive it and nothing can consume it — the sinks the flow
+equality forces are dead at their own sorts. -/
+theorem no_vanishing_parkfree {t : Term} (h : Typed [Ty.content] t Ty.unit)
+    (hf : fixCount h = 0) (hp : ParkFree h) : False := by
+  have hmc : mintCount h = 0 := mintCount_zero_at_unit_root h hf
+  have hfm : fixMint h = 0 := fixMint_eq_zero h hf
+  have hus : uses h 0 = 1 := single_linear_use h 0 Ty.content rfl rfl
+  have hsp : spendNet h = 1 := by
+    simp only [spendNet, spendNetFrom, hus, net, Int.mul_one, Int.add_zero]
+    omega
+  have hfe := flowEq (Γ := [Ty.content]) (t := t) (τ := Ty.unit) h
+  simp only [net] at hfe
+  rw [hsp, hfm] at hfe
+  have hsink : 0 < sinks h := by omega
+  have hcc : OblCtx [Ty.content] := by
+    intro (i : Nat) (b : Ty) hpos
+    cases i with
+    | zero =>
+        rw [List.get?_zero_cons'] at hpos
+        injection hpos with he
+        subst he
+        exact Or.inl rfl
+    | succ m =>
+        rw [List.get?_succ_cons'] at hpos
+        rw [List.get?_nil'] at hpos
+        contradiction
+  rcases sinks_extract h hsink hf hmc hp hcc with
+    ⟨Γ', t', ht, hfc', hmc', hp', hcc'⟩ | ⟨Γ', t', ht, hfc', hmc', hp', hcc'⟩
+  · exact no_trace_at_oblig (size ht) ht (Nat.le_refl _) hfc' hmc' hp' hcc'
+      True.intro
+  · exact no_stream_without_supply (size ht) ht (Nat.le_refl _) hfc'
+      (oblctx_noSSupply hcc') (by simp [NeedsS])
+
 end Dcare

@@ -85,3 +85,7 @@ Rules:
 #print axioms Dcare.no_trace_at_oblig
 #print axioms Dcare.deepConsume_notDomOK
 #print axioms Dcare.no_deep_consumer
+#print axioms Dcare.fixMint_eq_zero
+#print axioms Dcare.oblctx_noSSupply
+#print axioms Dcare.sinks_extract
+#print axioms Dcare.no_vanishing_parkfree
