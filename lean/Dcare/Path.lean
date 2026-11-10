@@ -3358,37 +3358,122 @@ theorem no_vanishing_parkfree {t : Term} (h : Typed [Ty.content] t Ty.unit)
   · exact no_stream_without_supply (size ht) ht (Nat.le_refl _) hfc'
       (oblctx_noSSupply hcc') (by simp [NeedsS])
 
-/-- TRACE-ORIGIN (the arithmetic base of the undisciplined chase): a
-fix-free mint-free trace-valued derivation SPENDS a trace-carrying
-position of its context — the trace-token has an origin in the context,
-and the origin is USED. This sharpens `tprop` at mint-free trees: the
-knower-route to traces (`terminate`, a mint) is banned, so the supply
-disjunction collapses to the trace-carrier that the flow equality
-exhibits. -/
-theorem trace_origin {Γ : List Ty} {t : Term} (h : Typed Γ t Ty.trace)
-    (hfc : fixCount h = 0) (hmc : mintCount h = 0) :
+/-- ORIGIN (the arithmetic base of the undisciplined chase, generalized):
+a fix-free mint-free derivation whose conclusion CARRIES trace-tokens
+SPENDS a trace-carrying position of its context — the origin exists and
+is USED. `tFlowEq` books the budget; the knower-route to traces
+(`terminate`, a mint) is banned, so no supply-disjunct survives. -/
+theorem origin_lemma {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ)
+    (hfc : fixCount h = 0) (hmc : mintCount h = 0) (hpos : 0 < tnet τ) :
     ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ tnet b > 0 ∧ uses h i ≥ 1 := by
   have htm : tMint h = 0 := by
     rw [tMint_eq_mintCount_nofix h hfc, hmc]
     omega
   have he := tFlowEq h
-  simp only [tnet] at he
-  rw [htm] at he
+  rw [htm, Int.add_zero] at he
   refine Classical.byContradiction fun hcon => ?_
   have hle : tSpend h ≤ 0 := by
     simp only [tSpend]
     refine wSpendFrom_nonpos tnet 0 Γ (uses h) ?_
-    intro (i : Nat) (a : Ty) hpos
+    intro (i : Nat) (a : Ty) hpos'
     simp only [Nat.zero_add]
     by_cases ht : tnet a > 0
     · have hu : uses h i = 0 := by
         rcases Nat.lt_or_ge (uses h i) 1 with hlt | hge
         · omega
-        · exact absurd ⟨i, a, hpos, ht, hge⟩ hcon
+        · exact absurd ⟨i, a, hpos', ht, hge⟩ hcon
       rw [hu]
       simp
     · have hle' : tnet a ≤ 0 := by omega
       exact Int.mul_nonpos_of_nonneg_of_nonpos (Int.natCast_nonneg _) hle'
   omega
+
+/-- TRACE-ORIGIN: the trace-typed instance of `origin_lemma`. -/
+theorem trace_origin {Γ : List Ty} {t : Term} (h : Typed Γ t Ty.trace)
+    (hfc : fixCount h = 0) (hmc : mintCount h = 0) :
+    ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ tnet b > 0 ∧ uses h i ≥ 1 :=
+  origin_lemma h hfc hmc (by simp [tnet])
+
+/-- SINK-EXTRACTION, counters-only (the undisciplined version): in a
+fix-free mint-free tree, a sink node's KILLED premise is itself fix-free
+and mint-free — no discipline is carried (undisciplined contexts are the
+S3 chase's subject; the counters are what descend unconditionally). -/
+theorem sinks_extract' :
+    ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ),
+    0 < sinks h → fixCount h = 0 → mintCount h = 0 →
+    (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' Ty.trace),
+        fixCount ht = 0 ∧ mintCount ht = 0)
+    ∨ (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' (.later Ty.stream)),
+        fixCount ht = 0 ∧ mintCount ht = 0)
+  | _, _, _, @Typed.snoc E Γ Δ t u ht hu hs, _, hfc, hmc => by
+      obtain ⟨hfc1, _⟩ : fixCount ht = 0 ∧ fixCount hu = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount ht = 0 ∧ mintCount hu = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact Or.inl ⟨Γ, t, ht, hfc1, hmc1⟩
+  | _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs, _, hfc, hmc => by
+      obtain ⟨_, hfc2⟩ : fixCount hc = 0 ∧ fixCount ht = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨_, hmc2⟩ : mintCount hc = 0 ∧ mintCount ht = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact Or.inr ⟨Δ, tl, ht, hfc2, hmc2⟩
+  | _, _, _, @Typed.lam _ _ _ _ h, hsink, hfc, hmc =>
+      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _, hsink, hfc, hmc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      simp only [sinks] at hsink
+      by_cases hsl : 0 < sinks hf
+      · exact sinks_extract' hf hsl hfc1 hmc1
+      · have hsr : 0 < sinks ha := by omega
+        exact sinks_extract' ha hsr hfc2 hmc2
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _, hsink, hfc, hmc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hl = 0 ∧ mintCount hr = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      simp only [sinks] at hsink
+      by_cases hsl : 0 < sinks hl
+      · exact sinks_extract' hl hsl hfc1 hmc1
+      · have hsr : 0 < sinks hr := by omega
+        exact sinks_extract' hr hsr hfc2 hmc2
+  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _, hsink, hfc, hmc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      simp only [sinks] at hsink
+      by_cases hst : 0 < sinks ht
+      · exact sinks_extract' ht hst hfc1 hmc1
+      · have hsb : 0 < sinks hb := by omega
+        exact sinks_extract' hb hsb hfc2 hmc2
+  | _, _, _, @Typed.next _ _ _ h, hsink, hfc, hmc =>
+      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, @Typed.contr _ _ _ _ _ h, hsink, hfc, hmc =>
+      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, @Typed.weak _ _ _ _ _ h, hsink, hfc, hmc =>
+      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, @Typed.fix _ _ _ _ _, _, hfc, _ =>
+      absurd hfc (by simp only [fixCount]; omega)
+  | _, _, _, Typed.var, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.unit, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.nil, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.gen, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.red, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.obj, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, Typed.terminate, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
 
 end Dcare

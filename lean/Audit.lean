@@ -92,3 +92,5 @@ Rules:
 #print axioms Dcare.Sub_size
 #print axioms Dcare.wSpendFrom_nonpos
 #print axioms Dcare.trace_origin
+#print axioms Dcare.origin_lemma
+#print axioms Dcare.sinks_extract'
