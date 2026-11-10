@@ -89,3 +89,6 @@ Rules:
 #print axioms Dcare.oblctx_noSSupply
 #print axioms Dcare.sinks_extract
 #print axioms Dcare.no_vanishing_parkfree
+#print axioms Dcare.Sub_size
+#print axioms Dcare.wSpendFrom_nonpos
+#print axioms Dcare.trace_origin

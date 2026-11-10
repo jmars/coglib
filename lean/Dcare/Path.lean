@@ -96,6 +96,39 @@ inductive Sub : {Γ₁ : List Ty} → {t₁ : Term} → {τ₁ : Ty} → Typed �
       {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} (s : Sub h d) : Sub (Typed.contr hk h) d
   | weak {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false} {h : Typed Γ t τ}
       {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} (s : Sub h d) : Sub (Typed.weak hk h) d
+  /-- The DIRECT-premise bases (a path must be able to start: without
+  these the relation is empty — every constructor wrapped another `Sub`,
+  so nothing was ever a subderivation of anything). -/
+  | lamD {Γ a b body} {h : Typed (a :: Γ) body b} : Sub (Typed.lam h) h
+  | appLD {E Γ Δ a b fn arg} {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a}
+      {hs : Γ ++ Δ = E} : Sub (Typed.app hf ha hs) hf
+  | appRD {E Γ Δ a b fn arg} {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a}
+      {hs : Γ ++ Δ = E} : Sub (Typed.app hf ha hs) ha
+  | pairLD {E Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : Sub (Typed.pair hl hr hs) hl
+  | pairRD {E Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : Sub (Typed.pair hl hr hs) hr
+  | leteTD {E Γ₁ Γ₂ a b c t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E} :
+      Sub (Typed.lete ht hb hs) ht
+  | leteBD {E Γ₁ Γ₂ a b c t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E} :
+      Sub (Typed.lete ht hb hs) hb
+  | nextD {Γ a t} {h : Typed Γ t a} : Sub (Typed.next h) h
+  | fixD {Γ a body} {hΓ : AllNonLinear Γ} {h : Typed Γ body (.arrow (.later a) a)} :
+      Sub (Typed.fix hΓ h) h
+  | consHD {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} : Sub (Typed.cons hc ht hs) hc
+  | consTD {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} : Sub (Typed.cons hc ht hs) ht
+  | snocTD {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : Sub (Typed.snoc ht hu hs) ht
+  | snocUD {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : Sub (Typed.snoc ht hu hs) hu
+  | contrD {Γ k t τ} {hk : k.isLinear = false} {h : Typed (k :: k :: Γ) (Term.mergeAt 0 t) τ} :
+      Sub (Typed.contr hk h) h
+  | weakD {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed Γ t τ} : Sub (Typed.weak hk h) h
 
 /-- Subderivations are strictly smaller — the well-founded measure for the
 reach inductions. -/
@@ -118,6 +151,21 @@ theorem Sub_size : ∀ {Γ₁ t₁ τ₁} {h : Typed Γ₁ t₁ τ₁} {Γ₂ t�
   | snocU s ih => simp only [size] at *; omega
   | contr s ih => simp only [size] at *; omega
   | weak s ih => simp only [size] at *; omega
+  | lamD => simp only [size]; omega
+  | appLD => simp only [size]; omega
+  | appRD => simp only [size]; omega
+  | pairLD => simp only [size]; omega
+  | pairRD => simp only [size]; omega
+  | leteTD => simp only [size]; omega
+  | leteBD => simp only [size]; omega
+  | nextD => simp only [size]; omega
+  | fixD => simp only [size]; omega
+  | consHD => simp only [size]; omega
+  | consTD => simp only [size]; omega
+  | snocTD => simp only [size]; omega
+  | snocUD => simp only [size]; omega
+  | contrD => simp only [size]; omega
+  | weakD => simp only [size]; omega
 
 /-! ## Content-need propagation -/
 
@@ -657,6 +705,27 @@ theorem tMint_zero_at_unit_root {t : Term} (h : Typed [Ty.content] t Ty.unit) :
   simp only [tnet, tSpend, wSpendFrom] at he
   rw [hu] at he
   omega
+
+/-- The trace-budget extraction, Σ-to-∃: if no spent position of the
+context carries a positive trace-weight, the whole weighted spend is
+non-positive. The contrapositive is the ORIGIN lemma — a positive
+trace-spend REQUIRES a spent trace-carrying position. -/
+theorem wSpendFrom_nonpos :
+    ∀ (w : Ty → Int) (base : Nat) (Γ : List Ty) (u : Nat → Nat),
+    (∀ (i : Nat) (a : Ty), Γ[i]? = some a → (u (base + i) : Int) * w a ≤ 0) →
+    wSpendFrom w base Γ u ≤ 0
+  | _, _, [], _, _ => by simp only [wSpendFrom]; omega
+  | w, base, a :: Γ', u, hcon => by
+      have hhead : (u base : Int) * w a ≤ 0 := by
+        have := hcon 0 a (List.get?_zero_cons')
+        simpa only [Nat.add_zero] using this
+      have htail := wSpendFrom_nonpos w (base + 1) Γ' u (fun (i : Nat) (a' : Ty) hpos => by
+        have hh := hcon (i + 1) a' (by simpa only [List.get?_succ_cons'] using hpos)
+        have hidx : base + 1 + i = base + (i + 1) := by omega
+        rw [← hidx] at hh
+        exact hh)
+      simp only [wSpendFrom]
+      omega
 
 /-! ## Stream-need and trace-need propagation -/
 
@@ -3288,5 +3357,38 @@ theorem no_vanishing_parkfree {t : Term} (h : Typed [Ty.content] t Ty.unit)
       True.intro
   · exact no_stream_without_supply (size ht) ht (Nat.le_refl _) hfc'
       (oblctx_noSSupply hcc') (by simp [NeedsS])
+
+/-- TRACE-ORIGIN (the arithmetic base of the undisciplined chase): a
+fix-free mint-free trace-valued derivation SPENDS a trace-carrying
+position of its context — the trace-token has an origin in the context,
+and the origin is USED. This sharpens `tprop` at mint-free trees: the
+knower-route to traces (`terminate`, a mint) is banned, so the supply
+disjunction collapses to the trace-carrier that the flow equality
+exhibits. -/
+theorem trace_origin {Γ : List Ty} {t : Term} (h : Typed Γ t Ty.trace)
+    (hfc : fixCount h = 0) (hmc : mintCount h = 0) :
+    ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ tnet b > 0 ∧ uses h i ≥ 1 := by
+  have htm : tMint h = 0 := by
+    rw [tMint_eq_mintCount_nofix h hfc, hmc]
+    omega
+  have he := tFlowEq h
+  simp only [tnet] at he
+  rw [htm] at he
+  refine Classical.byContradiction fun hcon => ?_
+  have hle : tSpend h ≤ 0 := by
+    simp only [tSpend]
+    refine wSpendFrom_nonpos tnet 0 Γ (uses h) ?_
+    intro (i : Nat) (a : Ty) hpos
+    simp only [Nat.zero_add]
+    by_cases ht : tnet a > 0
+    · have hu : uses h i = 0 := by
+        rcases Nat.lt_or_ge (uses h i) 1 with hlt | hge
+        · omega
+        · exact absurd ⟨i, a, hpos, ht, hge⟩ hcon
+      rw [hu]
+      simp
+    · have hle' : tnet a ≤ 0 := by omega
+      exact Int.mul_nonpos_of_nonneg_of_nonpos (Int.natCast_nonneg _) hle'
+  omega
 
 end Dcare
