@@ -87,7 +87,9 @@ Rules:
 #print axioms Dcare.no_deep_consumer
 #print axioms Dcare.fixMint_eq_zero
 #print axioms Dcare.oblctx_noSSupply
-#print axioms Dcare.sinks_extract
+#print axioms Dcare.sinks_extract'
+#print axioms Dcare.Prem_size
+#print axioms Dcare.Prem_clean
 #print axioms Dcare.no_vanishing_parkfree
 #print axioms Dcare.Sub_size
 #print axioms Dcare.wSpendFrom_nonpos

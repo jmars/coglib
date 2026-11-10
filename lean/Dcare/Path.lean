@@ -3476,4 +3476,150 @@ theorem sinks_extract' :
   | _, _, _, Typed.terminate, hsink, _, _ => by
       simp only [sinks] at hsink; omega
 
+/-! ## The chase: paths, premises, and the undisciplined kill
+
+The undisciplined chase walks a trace-carrying VALUE to its death. The
+walk needs, at each node, its PARENT and its SLOT there — carried by a
+`Path` certificate built innermost-last (matching a `step` exposes the
+parent and the `Prem` slot), with the counters descending along
+premises and sizes strictly decreasing. -/
+
+/-- `Prem c v`: `v` is a DIRECT premise of `c` — the slot map for the
+chase's parent-analysis. -/
+inductive Prem : {E : List Ty} → {tc : Term} → {τc : Ty} → Typed E tc τc →
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Type where
+  | lamP {a b body} {h : Typed (a :: E) body b} : Prem (.lam h) h
+  | appFP {Γ Δ X b fn arg} {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X}
+      {hs : Γ ++ Δ = E} : Prem (.app hf ha hs) hf
+  | appAP {Γ Δ X b fn arg} {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X}
+      {hs : Γ ++ Δ = E} : Prem (.app hf ha hs) ha
+  | pairLP {Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : Prem (.pair hl hr hs) hl
+  | pairRP {Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : Prem (.pair hl hr hs) hr
+  | leteTP {Γ₁ Γ₂ a b c' t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c'} {hs : Γ₁ ++ Γ₂ = E} : Prem (.lete ht hb hs) ht
+  | leteBP {Γ₁ Γ₂ a b c' t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c'} {hs : Γ₁ ++ Γ₂ = E} : Prem (.lete ht hb hs) hb
+  | nextP {a t} {h : Typed E t a} : Prem (.next h) h
+  | fixP {a body} {hΓ : AllNonLinear E} {h : Typed E body (.arrow (.later a) a)} :
+      Prem (.fix hΓ h) h
+  | consHP {Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} : Prem (.cons hc ht hs) hc
+  | consTP {Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} : Prem (.cons hc ht hs) ht
+  | snocTP {Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : Prem (.snoc ht hu hs) ht
+  | snocUP {Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : Prem (.snoc ht hu hs) hu
+  | contrP {k : Ty} {t τ} {hk : k.isLinear = false} {h : Typed (k :: k :: E) (Term.mergeAt 0 t) τ} :
+      Prem (.contr hk h) h
+  | weakP {k : Ty} {t τ} {hk : k.isLinear = false} {h : Typed E t τ} : Prem (.weak hk h) h
+
+/-- `Path root v`: the containment certificate, built innermost-last —
+matching a `step` exposes the parent's path and the slot `v` occupies
+there. -/
+inductive Path {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀) :
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Type where
+  | here : Path root root
+  | step {E tc τc} {c : Typed E tc τc} {Γ t τ} {v : Typed Γ t τ}
+      (p : Path root c) (s : Prem c v) : Path root v
+
+/-- Premises are strictly smaller. -/
+theorem Prem_size : ∀ {E tc τc} {c : Typed E tc τc} {Γ t τ} {v : Typed Γ t τ},
+    Prem c v → size v < size c
+  | _, _, _, _, _, _, _, _, Prem.lamP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.appFP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.appAP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.pairLP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.pairRP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.leteTP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.leteBP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.nextP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.fixP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.consHP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.consTP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.snocTP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.snocUP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.contrP => by simp only [size]; omega
+  | _, _, _, _, _, _, _, _, Prem.weakP => by simp only [size]; omega
+
+/-- The counters descend along premises. -/
+theorem Prem_clean : ∀ {E tc τc} {c : Typed E tc τc} {Γ t τ} {v : Typed Γ t τ},
+    Prem c v → fixCount c = 0 → mintCount c = 0 → fixCount v = 0 ∧ mintCount v = 0
+  | _, _, _, _, _, _, _, _, Prem.lamP, hfc, hmc => by
+      simp only [fixCount, mintCount] at *
+      exact ⟨hfc, hmc⟩
+  | _, _, _, _, _, _, _, _, Prem.appFP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h1, m1⟩
+  | _, _, _, _, _, _, _, _, Prem.appAP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h2, m2⟩
+  | _, _, _, _, _, _, _, _, Prem.pairLP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h1, m1⟩
+  | _, _, _, _, _, _, _, _, Prem.pairRP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h2, m2⟩
+  | _, _, _, _, _, _, _, _, Prem.leteTP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h1, m1⟩
+  | _, _, _, _, _, _, _, _, Prem.leteBP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h2, m2⟩
+  | _, _, _, _, _, _, _, _, Prem.nextP, hfc, hmc => by
+      simp only [fixCount, mintCount] at *
+      exact ⟨hfc, hmc⟩
+  | _, _, _, _, _, _, _, _, Prem.fixP, hfc, _ => by
+      simp only [fixCount] at hfc; omega
+  | _, _, _, _, _, _, _, _, Prem.consHP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h1, m1⟩
+  | _, _, _, _, _, _, _, _, Prem.consTP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h2, m2⟩
+  | _, _, _, _, _, _, _, _, Prem.snocTP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h1, m1⟩
+  | _, _, _, _, _, _, _, _, Prem.snocUP, hfc, hmc => by
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨m1, m2⟩ : mintCount _ = 0 ∧ mintCount _ = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact ⟨h2, m2⟩
+  | _, _, _, _, _, _, _, _, Prem.contrP, hfc, hmc => by
+      simp only [fixCount, mintCount] at *
+      exact ⟨hfc, hmc⟩
+  | _, _, _, _, _, _, _, _, Prem.weakP, hfc, hmc => by
+      simp only [fixCount, mintCount] at *
+      exact ⟨hfc, hmc⟩
+
 end Dcare
