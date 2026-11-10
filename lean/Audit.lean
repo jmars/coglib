@@ -107,6 +107,8 @@ Rules:
 #print axioms Dcare.parent_locate
 #print axioms Dcare.substG_tsize
 #print axioms Dcare.linear_redex_shrink
+#print axioms Dcare.substP_tsize
+#print axioms Dcare.linear_redex_shrinkP
 #print axioms Dcare.sFlowEq
 #print axioms Dcare.sMint_nonpos
 #print axioms Dcare.stream_origin

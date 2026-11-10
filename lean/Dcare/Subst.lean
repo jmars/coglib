@@ -277,4 +277,198 @@ theorem linear_redex_shrink (a : Ty) {body arg : Term}
     omega
   exact_mod_cast hgoal
 
+/-- Position-general substitution — the INSERT-AT-BINDER convention the
+linear cut composes under: `substP k p d arg arg body` replaces the ambient
+context's position `p` (at binder depth `k`: the index `k + p`) by `arg`
+lifted to `k + p` (the argument's context is INSERTED where the binder
+was), leaves locals and positions below the binder alone, and shifts the
+positions above by `d − 1` (`d = |Δ|`). This is the convention under
+which the one-hole splice rebuilds split frames WITHOUT moving side
+premises: the insertion point is preserved up every frame. -/
+def substP : Nat → Nat → Nat → Term → Term → Term
+  | k, p, d, arg, .var i =>
+      if i < k then .var i
+      else if i = k + p then Term.liftN (k + p) arg
+      else if i < k + p then .var i
+      else .var (i + d - 1)
+  | k, p, d, arg, .lam a b => .lam a (substP (k + 1) p d arg b)
+  | k, p, d, arg, .app f x => .app (substP k p d arg f) (substP k p d arg x)
+  | k, p, d, arg, .pair l r => .pair (substP k p d arg l) (substP k p d arg r)
+  | k, p, d, arg, .lete t b => .lete (substP k p d arg t) (substP (k + 2) p d arg b)
+  | _, _, _, _, .unit => .unit
+  | k, p, d, arg, .next t => .next (substP k p d arg t)
+  | k, p, d, arg, .fix t => .fix (substP k p d arg t)
+  | k, p, d, arg, .cons h t => .cons (substP k p d arg h) (substP k p d arg t)
+  | _, _, _, _, .nil => .nil
+  | k, p, d, arg, .snoc t u => .snoc (substP k p d arg t) (substP k p d arg u)
+  | _, _, _, _, .gen => .gen
+  | _, _, _, _, .red => .red
+  | _, _, _, _, .obj => .obj
+  | _, _, _, _, .terminate => .terminate
+
+/-- THE POSITION-GENERAL SIZE LAW: same shape as `substG_tsize` — each
+occurrence of the substituted index trades for a copy of the argument. -/
+theorem substP_tsize : ∀ (k p d : Nat) (arg body : Term),
+    (tsize (substP k p d arg body) : Int)
+      = (tsize body : Int) + (occCount (k + p) body : Int) * ((tsize arg : Int) - 1) := by
+  intro k p d arg body
+  induction body generalizing k with
+  | var i =>
+      by_cases hik : i < k
+      · have hocc0 : occCount (k + p) (Term.var i) = 0 := by
+          rw [occCount, if_neg (by omega : ¬ i = k + p)]
+        have hsub : substP k p d arg (Term.var i) = Term.var i := by
+          rw [substP, if_pos hik]
+        rw [hsub, hocc0]
+        simp [tsize]
+      · by_cases heq : i = k + p
+        · have hocc1 : occCount (k + p) (Term.var i) = 1 := by
+            rw [occCount, if_pos heq]
+          have hsub : substP k p d arg (Term.var i)
+              = Term.liftN (k + p) arg := by
+            rw [substP, if_neg hik, if_pos heq]
+          rw [hsub, hocc1, liftN_tsize, tsize]
+          omega
+        · have hocc0 : occCount (k + p) (Term.var i) = 0 := by
+            rw [occCount, if_neg heq]
+          have hsub : substP k p d arg (Term.var i)
+              = if i < k + p then Term.var i else Term.var (i + d - 1) := by
+            rw [substP, if_neg hik, if_neg heq]
+          rw [hsub, hocc0]
+          by_cases hilt : i < k + p
+          · rw [if_pos hilt]; simp [tsize]
+          · rw [if_neg hilt]; simp [tsize]
+  | lam a b ih =>
+      have h := ih (k + 1)
+      have e : ((occCount (k + p + 1) b : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP (k + 1) p d arg b) : Int) - (tsize b : Int) := by
+        have hc : k + p + 1 = (k + 1) + p := by omega
+        rw [hc]
+        omega
+      simp only [substP, occCount, tsize]
+      rw [e]
+      omega
+  | app f x ihf ihx =>
+      have h1 := ihf k
+      have h2 := ihx k
+      have e1 : ((occCount (k + p) f : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg f) : Int) - (tsize f : Int) := by
+        rw [h1]; omega
+      have e2 : ((occCount (k + p) x : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg x) : Int) - (tsize x : Int) := by
+        rw [h2]; omega
+      have hd : ((occCount (k + p) f + occCount (k + p) x : Nat) : Int)
+            * ((tsize arg : Int) - 1)
+          = (occCount (k + p) f : Int) * ((tsize arg : Int) - 1)
+            + (occCount (k + p) x : Int) * ((tsize arg : Int) - 1) := by
+        rw [Int.natCast_add, Int.add_mul]
+      simp only [substP, occCount, tsize]
+      rw [hd, e1, e2]
+      omega
+  | pair l r ihl ihr =>
+      have h1 := ihl k
+      have h2 := ihr k
+      have e1 : ((occCount (k + p) l : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg l) : Int) - (tsize l : Int) := by
+        rw [h1]; omega
+      have e2 : ((occCount (k + p) r : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg r) : Int) - (tsize r : Int) := by
+        rw [h2]; omega
+      have hd : ((occCount (k + p) l + occCount (k + p) r : Nat) : Int)
+            * ((tsize arg : Int) - 1)
+          = (occCount (k + p) l : Int) * ((tsize arg : Int) - 1)
+            + (occCount (k + p) r : Int) * ((tsize arg : Int) - 1) := by
+        rw [Int.natCast_add, Int.add_mul]
+      simp only [substP, occCount, tsize]
+      rw [hd, e1, e2]
+      omega
+  | lete t b iht ihb =>
+      have h1 := iht k
+      have h2 := ihb (k + 2)
+      have e1 : ((occCount (k + p) t : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg t) : Int) - (tsize t : Int) := by
+        rw [h1]; omega
+      have e2 : ((occCount (k + p + 2) b : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP (k + 2) p d arg b) : Int) - (tsize b : Int) := by
+        have hc : k + p + 2 = (k + 2) + p := by omega
+        rw [hc]
+        omega
+      have hd : ((occCount (k + p) t + occCount (k + p + 2) b : Nat) : Int)
+            * ((tsize arg : Int) - 1)
+          = (occCount (k + p) t : Int) * ((tsize arg : Int) - 1)
+            + (occCount (k + p + 2) b : Int) * ((tsize arg : Int) - 1) := by
+        rw [Int.natCast_add, Int.add_mul]
+      simp only [substP, occCount, tsize]
+      rw [hd, e1, e2]
+      omega
+  | unit => simp [substP, occCount, tsize]
+  | next t ih =>
+      have h := ih k
+      have e : ((occCount (k + p) t : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg t) : Int) - (tsize t : Int) := by
+        rw [h]; omega
+      simp only [substP, occCount, tsize]
+      rw [e]
+      omega
+  | fix t ih =>
+      have h := ih k
+      have e : ((occCount (k + p) t : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg t) : Int) - (tsize t : Int) := by
+        rw [h]; omega
+      simp only [substP, occCount, tsize]
+      rw [e]
+      omega
+  | cons h t ihh iht =>
+      have h1 := ihh k
+      have h2 := iht k
+      have e1 : ((occCount (k + p) h : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg h) : Int) - (tsize h : Int) := by
+        rw [h1]; omega
+      have e2 : ((occCount (k + p) t : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg t) : Int) - (tsize t : Int) := by
+        rw [h2]; omega
+      have hd : ((occCount (k + p) h + occCount (k + p) t : Nat) : Int)
+            * ((tsize arg : Int) - 1)
+          = (occCount (k + p) h : Int) * ((tsize arg : Int) - 1)
+            + (occCount (k + p) t : Int) * ((tsize arg : Int) - 1) := by
+        rw [Int.natCast_add, Int.add_mul]
+      simp only [substP, occCount, tsize]
+      rw [hd, e1, e2]
+      omega
+  | nil => simp [substP, occCount, tsize]
+  | snoc t u iht ihu =>
+      have h1 := iht k
+      have h2 := ihu k
+      have e1 : ((occCount (k + p) t : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg t) : Int) - (tsize t : Int) := by
+        rw [h1]; omega
+      have e2 : ((occCount (k + p) u : Nat) : Int) * ((tsize arg : Int) - 1)
+          = (tsize (substP k p d arg u) : Int) - (tsize u : Int) := by
+        rw [h2]; omega
+      have hd : ((occCount (k + p) t + occCount (k + p) u : Nat) : Int)
+            * ((tsize arg : Int) - 1)
+          = (occCount (k + p) t : Int) * ((tsize arg : Int) - 1)
+            + (occCount (k + p) u : Int) * ((tsize arg : Int) - 1) := by
+        rw [Int.natCast_add, Int.add_mul]
+      simp only [substP, occCount, tsize]
+      rw [hd, e1, e2]
+      omega
+  | gen => simp [substP, occCount, tsize]
+  | red => simp [substP, occCount, tsize]
+  | obj => simp [substP, occCount, tsize]
+  | terminate => simp [substP, occCount, tsize]
+
+/-- THE LINEAR SHRINK, position-general form. -/
+theorem linear_redex_shrinkP (a : Ty) {body arg : Term}
+    (hocc : occCount 0 body = 1) :
+    tsize (substP 0 0 1 arg body) + 2 < tsize (Term.app (Term.lam a body) arg) := by
+  have h := substP_tsize 0 0 1 arg body
+  rw [hocc] at h
+  have harg : (0 : Int) < (tsize arg : Int) := by exact_mod_cast tsize_pos arg
+  have hgoal : ((tsize (substP 0 0 1 arg body) + 2 : Nat) : Int)
+      < ((tsize (Term.app (Term.lam a body) arg) : Nat) : Int) := by
+    simp only [Term.app, Term.lam, tsize]
+    omega
+  exact_mod_cast hgoal
+
 end Dcare
