@@ -3904,4 +3904,198 @@ inductive Introduces : {E : List Ty} → {tp : Term} → {τp : Ty} → Typed E 
       {ht : Typed Γ₁ s (.tensor x y)} {hb : Typed (y :: x :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E} :
       Introduces (Typed.lete ht hb hs) x
 
+/-! ## Position provenance
+
+A position in a subderivation's context either is supplied by the root's
+own context or was INTRODUCED by a binder on the path down — the
+position-trace-up of the chase's origin analysis. Pure position
+existence: no spend, no sign condition. The induction matches the
+containment certificate and then the PARENT-SLOT certificate (whose
+pattern carries the parent's context as its FIRST slot); each case's
+position preimage is the split arithmetic (prefix sides keep the index,
+suffix sides shift by the split, `contr` merges 0/1, `weak` shifts past
+the drop). -/
+
+/-- POSITION-INTRODUCED: walking a `Path` from the root, every context
+position of the endpoint either pre-exists in the root's context or is
+introduced by a λ-domain / lete-component AT A NODE ON THE PATH strictly
+above the endpoint. -/
+theorem pos_introduced {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d) :
+    ∀ (i : Nat) (a : Ty), Γ[i]? = some a →
+    (∃ (j : Nat), Γ₀[j]? = some a) ∨
+    (∃ (E' : List Ty) (tp : Term) (τp : Ty) (β : Typed E' tp τp),
+        Path root β ∧ Introduces β a ∧ Sub β d) := by
+  induction hp with
+  | here => intro i a hpos; exact Or.inl ⟨i, hpos⟩
+  | step p s ih =>
+      intro i a hpos
+      match s with
+      | @Prem.lamP E' dom bb body hbody =>
+          cases i with
+          | zero =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with hdom
+              subst hdom
+              exact Or.inr ⟨_, _, _, Typed.lam hbody, p, Introduces.lamI hbody, Sub.lamD⟩
+          | succ m =>
+              rw [List.get?_succ_cons'] at hpos
+              rcases ih m a hpos with
+                ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+              · exact Or.inl ⟨j, hj⟩
+              · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.lamD⟩
+      | @Prem.appFP E' Γf Δ X bb fn arg hf ha hs =>
+          have hlt : i < Γf.length := List.get?_some_lt hpos
+          rcases ih i a
+            (by rw [← hs, List.get?_append_lt hlt]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.appLD⟩
+      | @Prem.appAP E' Γf Δ X bb fn arg hf ha hs =>
+          have hge : Γf.length ≤ Γf.length + i := Nat.le_add_right Γf.length i
+          rcases ih (Γf.length + i) a
+            (by rw [← hs, List.get?_append_ge hge, Nat.add_sub_cancel_left]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.appRD⟩
+      | @Prem.pairLP E' Γf Δ x y l r hl hr hs =>
+          have hlt : i < Γf.length := List.get?_some_lt hpos
+          rcases ih i a
+            (by rw [← hs, List.get?_append_lt hlt]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.pairLD⟩
+      | @Prem.pairRP E' Γf Δ x y l r hl hr hs =>
+          have hge : Γf.length ≤ Γf.length + i := Nat.le_add_right Γf.length i
+          rcases ih (Γf.length + i) a
+            (by rw [← hs, List.get?_append_ge hge, Nat.add_sub_cancel_left]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.pairRD⟩
+      | @Prem.leteTP E' Γ₁ Γ₂ x y cc s' body ht hb hs =>
+          have hlt : i < Γ₁.length := List.get?_some_lt hpos
+          rcases ih i a
+            (by rw [← hs, List.get?_append_lt hlt]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.leteTD⟩
+      | @Prem.leteBP E' Γ₁ Γ₂ x y cc s' body ht hb hs =>
+          cases i with
+          | zero =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with hyy
+              subst hyy
+              exact Or.inr ⟨_, _, _, Typed.lete ht hb hs, p, Introduces.leteIY,
+                Sub.leteBD⟩
+          | succ m =>
+              cases m with
+              | zero =>
+                  rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                  injection hpos with hxx
+                  subst hxx
+                  exact Or.inr ⟨_, _, _, Typed.lete ht hb hs, p, Introduces.leteIX,
+                    Sub.leteBD⟩
+              | succ m' =>
+                  rw [List.get?_add_two] at hpos
+                  have hge : Γ₁.length ≤ Γ₁.length + m' := Nat.le_add_right Γ₁.length m'
+                  rcases ih (Γ₁.length + m') a
+                    (by rw [← hs, List.get?_append_ge hge, Nat.add_sub_cancel_left]; exact hpos) with
+                    ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+                  · exact Or.inl ⟨j, hj⟩
+                  · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.leteBD⟩
+      | @Prem.nextP E' x t' h =>
+          rcases ih i a hpos with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.nextD⟩
+      | @Prem.fixP E' x body hΓ h =>
+          rcases ih i a hpos with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.fixD⟩
+      | @Prem.consHP E' Γf Δ hd tl hc ht hs =>
+          have hlt : i < Γf.length := List.get?_some_lt hpos
+          rcases ih i a
+            (by rw [← hs, List.get?_append_lt hlt]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.consHD⟩
+      | @Prem.consTP E' Γf Δ hd tl hc ht hs =>
+          have hge : Γf.length ≤ Γf.length + i := Nat.le_add_right Γf.length i
+          rcases ih (Γf.length + i) a
+            (by rw [← hs, List.get?_append_ge hge, Nat.add_sub_cancel_left]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.consTD⟩
+      | @Prem.snocTP E' Γf Δ u' c' ht hu hs =>
+          have hlt : i < Γf.length := List.get?_some_lt hpos
+          rcases ih i a
+            (by rw [← hs, List.get?_append_lt hlt]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.snocTD⟩
+      | @Prem.snocUP E' Γf Δ u' c' ht hu hs =>
+          have hge : Γf.length ≤ Γf.length + i := Nat.le_add_right Γf.length i
+          rcases ih (Γf.length + i) a
+            (by rw [← hs, List.get?_append_ge hge, Nat.add_sub_cancel_left]; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.snocUD⟩
+      | @Prem.contrP E' k t' τ' hk h =>
+          cases i with
+          | zero =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with hka
+              subst hka
+              rcases ih 0 k (by rw [List.get?_zero_cons']) with
+                ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+              · exact Or.inl ⟨j, hj⟩
+              · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.contrD⟩
+          | succ m =>
+              cases m with
+              | zero =>
+                  rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                  injection hpos with hka
+                  subst hka
+                  rcases ih 0 k (by rw [List.get?_zero_cons']) with
+                    ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+                  · exact Or.inl ⟨j, hj⟩
+                  · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.contrD⟩
+              | succ m' =>
+                  rw [List.get?_add_two] at hpos
+                  rcases ih (m' + 1) a
+                    (by rw [List.get?_succ_cons']; exact hpos) with
+                    ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+                  · exact Or.inl ⟨j, hj⟩
+                  · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.contrD⟩
+      | @Prem.weakP E' k t' τ' hk h =>
+          rcases ih (i + 1) a
+            (by rw [List.get?_succ_cons']; exact hpos) with
+            ⟨j, hj⟩ | ⟨E₂, tp, τp, β, hpβ, hint, hsub⟩
+          · exact Or.inl ⟨j, hj⟩
+          · exact Or.inr ⟨_, _, _, β, hpβ, hint, Sub_trans hsub Sub.weakD⟩
+
+/-- Counters descend along any containment path. -/
+theorem Path_clean {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d) :
+    fixCount root = 0 → mintCount root = 0 → fixCount d = 0 ∧ mintCount d = 0 := by
+  induction hp with
+  | here => intro hfc hmc; exact ⟨hfc, hmc⟩
+  | step p s ih =>
+      intro hfc hmc
+      obtain ⟨hfc', hmc'⟩ := ih hfc hmc
+      exact Prem_clean s hfc' hmc'
+
+/-- Every non-root node on a path has its parent on the path — the
+containment certificate inverts one level. The root case returns the
+index equalities (contexts/terms/types — no casts across the
+Type-valued family). -/
+theorem parent_locate {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d) :
+    (∃ (E : List Ty) (tp : Term) (τp : Ty) (c : Typed E tp τp),
+      Path root c ∧ Prem c d) ∨ (Γ = Γ₀ ∧ t = t₀ ∧ τ = τ₀) := by
+  cases hp with
+  | here => exact Or.inr ⟨rfl, rfl, rfl⟩
+  | step p s => exact Or.inl ⟨_, _, _, _, p, s⟩
+
 end Dcare

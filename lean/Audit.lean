@@ -101,3 +101,6 @@ Rules:
 #print axioms Dcare.read_locate
 #print axioms Dcare.Sub_trans
 #print axioms Dcare.Introduces
+#print axioms Dcare.pos_introduced
+#print axioms Dcare.Path_clean
+#print axioms Dcare.parent_locate
