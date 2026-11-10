@@ -1537,4 +1537,906 @@ theorem liveBind_lete_inv {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
   · rw [if_neg h1] at hl
     omega
 
+/-- The token can flow through this type's fire: some domain in the
+spine IS content, content-needing, or itself a token-consumer (the
+extension — the identity on `arrow content content` consumes tokens
+without `CarriesContent` seeing it). -/
+def TokenThrough : Ty → Prop
+  | .arrow a σ => (a = Ty.content ∨ NeedsC a ∨ HasTokenDomain a) ∨ TokenThrough σ
+  | _ => False
+
+/-- A token-through type is never inert — some domain in its spine is
+live, and domains are inside `allInert`'s conjunction. -/
+theorem tokenThrough_notallInert : ∀ τ : Ty, TokenThrough τ → allInert τ = false := by
+  intro τ
+  induction τ with
+  | content | knower | knowledge | value | stream | trace | unit => intro h; exact h.elim
+  | later a' _ => intro h; exact h.elim
+  | tensor a' b' _ _ => intro h; exact h.elim
+  | arrow a' b' iha ihb =>
+      intro h
+      rcases h with h | h
+      · rcases h with rfl | h | h
+        · simp [allInert]
+        · simp [allInert, needsC_notallInert _ h]
+        · simp [allInert, hasTokenDomain_notallInert _ h]
+      · simp [allInert, ihb h]
+
+/-! ## Extraction: the type-preserving producer walk -/
+
+/-- EXTRACTION: a fix-free, mint-free, live-binder-free producer of an
+arrow-type with a content-carrying domain bottoms at a λ whose binder is
+EXACTLY that domain — the produce-body, returned with a clean context and
+zero counters. TYPE-PRESERVATION is the whole trick (obs 36): the walked
+type IS the invariant, so the spine needs no conjunction re-derivation —
+the same move that widened `no_stream_without_supply` past the
+producer-spine. The binder-exact form is what the kill's content-row
+needs: the token lands at position 0 of the returned context.
+
+Every extraction path terminates at a `lam` of the ORIGINAL type: the
+app-spine's double descent returns a produce of `arrow Y σ` and extracts
+THAT at the original type; lete descends into a body of the same type;
+contr/weak pass the inner result through (the statement asks nothing
+about the input context). -/
+def extract_produce :
+    ∀ (n : Nat), ∀ {Γ : List Ty} {Y σ : Ty} {τ : Ty} {f : Term} (h : Typed Γ f τ),
+    size h ≤ n → τ = .arrow Y σ → TokenThrough (.arrow Y σ) → fixCount h = 0 →
+    mintCount h = 0 → liveBind h = 0 → CleanCtx Γ →
+    ∃ (Γ' : List Ty) (t' : Term) (h' : Typed (Y :: Γ') t' σ),
+      size h' ≤ n ∧ CleanCtx (Y :: Γ') ∧ fixCount h' = 0 ∧ mintCount h' = 0 ∧
+      liveBind h' = 0
+  | 0, _, _, _, _, _, h, hn, _, _, _, _, _, _ =>
+      absurd hn (Nat.not_le_of_lt (size_pos h))
+  | n + 1, _, _, _, _, _, Typed.var, _, heq, hdom, _, _, _, hcc => by
+      cases heq
+      have hai := tokenThrough_notallInert _ hdom
+      have hbo := hcc 0 _ List.get?_zero_cons'
+      rw [binderOK, hai, Bool.or_false] at hbo
+      exact Ty.noConfusion (eq_of_beq hbo)
+  | n + 1, _, _, _, _, _, @Typed.lam Γ a b body h, hsz, heq, hdom, hfc, hmc,
+      hlb, hcc => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      obtain ⟨hbY, hlb1⟩ := liveBind_lam_inv h hlb
+      refine ⟨_, _, h, ?_, ?_, ?_, ?_, hlb1⟩
+      · rw [size_lam] at hsz; omega
+      · intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hbY
+        | succ m =>
+            rw [List.get?_succ_cons'] at hpos
+            exact hcc m b' hpos
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+  | n + 1, _, _, _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hsz, heq, hdom,
+      hfc, hmc, hlb, hcc => by
+      subst heq
+      obtain ⟨hfc1, _⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hlb1, _⟩ : liveBind hf = 0 ∧ liveBind ha = 0 := by
+        simpa only [liveBind, Nat.add_eq_zero_iff] using hlb
+      have hszf : size hf ≤ n := by rw [size_app] at hsz; omega
+      obtain ⟨hcc1, _⟩ := cleanctx_split hcc hs
+      obtain ⟨Γ₁, t₁, h₁, hs1, hc1, hf1, hm1, hl1⟩ :=
+        extract_produce n hf hszf rfl (Or.inr hdom) hfc1 hmc1 hlb1 hcc1
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+        extract_produce n h₁ hs1 rfl hdom hf1 hm1 hl1 hc1
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hl2⟩
+  | n + 1, _, _, _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, _, heq, _, _, _,
+      _, _ => by
+      exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hsz, heq,
+      hdom, hfc, hmc, hlb, hcc => by
+      subst heq
+      obtain ⟨hba, hbb, _, hlb2⟩ := liveBind_lete_inv hs hlb
+      obtain ⟨_, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨_, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨_, hcc2⟩ := cleanctx_split hcc hs
+      have hszb : size hb ≤ n := by rw [size_lete] at hsz; omega
+      have hccb : CleanCtx (b :: a :: Γ₂) := by
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hbb
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hba
+            | succ k =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc2 k b' hpos
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+        extract_produce n hb hszb rfl hdom hfc2 hmc2 hlb2 hccb
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hl2⟩
+  | n + 1, _, _, _, _, _, Typed.unit, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, @Typed.next Γ a t h, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, @Typed.fix _ a body hΓ h, _, heq, hdom, hfc, _, _, _ => by
+      cases heq
+      exact absurd hfc (by simp only [fixCount]; omega)
+  | n + 1, _, _, _, _, _, Typed.cons hc ht hs, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, Typed.nil, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, Typed.snoc ht hu hs, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, Typed.gen, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [TokenThrough, HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, Typed.red, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [TokenThrough, HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, Typed.obj, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [TokenThrough, HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, Typed.terminate, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [TokenThrough, HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, @Typed.contr Γ k t τ hk h, hsz, heq, hdom, hfc, hmc,
+      hlb, hcc => by
+      subst heq
+      have hccc : CleanCtx (k :: k :: Γ) := by
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hcc 0 _ List.get?_zero_cons'
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hcc 0 _ List.get?_zero_cons'
+            | succ m' =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc (m' + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+        extract_produce n h (by rw [size_contr] at hsz; omega) rfl hdom
+          (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+          (by simpa only [liveBind] using hlb) hccc
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hl2⟩
+  | n + 1, _, _, _, _, _, @Typed.weak Γ k t τ hk h, hsz, heq, hdom, hfc, hmc,
+      hlb, hcc => by
+      subst heq
+      have hccp : CleanCtx Γ := by
+        intro (i : Nat) (b' : Ty) hpos
+        exact hcc (i + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+        extract_produce n h (by rw [size_weak] at hsz; omega) rfl hdom
+          (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+          (by simpa only [liveBind] using hlb) hccp
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hl2⟩
+
+/-- NO TRACE AT CLEAN: the no-archival theorem. In the liveBind-clean
+fix-free mint-free fragment, NO trace-needing conclusion exists at a
+clean context — every trace-spine bottoms at a banned λ-domain (liveBind),
+a banned hypothesis (CleanCtx), a mint (nil/terminate), or a fixpoint.
+The app-case is obs 36's repaired three-branch analysis: with `NeedsT b`
+on the table, `¬NeedsT (arrow X b)` IS the three-way disjunction over X's
+needs — the NeedsC branch extracts the producer and recurses on the
+produce-body with the invoking node's own `NeedsT b`. -/
+theorem no_trace_at_clean :
+    ∀ (n : Nat), ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ),
+    size h ≤ n → fixCount h = 0 → mintCount h = 0 → liveBind h = 0 →
+    CleanCtx Γ → NeedsT τ → False
+  | 0, _, _, _, h, hn, _, _, _, _, _ => absurd hn (Nat.not_le_of_lt (size_pos h))
+  | n + 1, _, _, _, Typed.var, _, _, _, _, hcc, hK =>
+      binderOK_notNeedsT (hcc 0 _ List.get?_zero_cons') hK
+  | n + 1, _, _, _, @Typed.lam Γ a b body h, hsz, hfc, hmc, hlb, hcc,
+      ⟨hb, hneg⟩ => by
+      obtain ⟨hbY, hlb1⟩ := liveBind_lam_inv h hlb
+      refine no_trace_at_clean n h (by rw [size_lam] at hsz; omega) ?_ ?_ hlb1 ?_ hb
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+      · intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hbY
+        | succ m =>
+            rw [List.get?_succ_cons'] at hpos
+            exact hcc m b' hpos
+  | n + 1, _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hsz, hfc, hmc, hlb,
+      hcc, hK => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hlb1, hlb2⟩ : liveBind hf = 0 ∧ liveBind ha = 0 := by
+        simpa only [liveBind, Nat.add_eq_zero_iff] using hlb
+      obtain ⟨hcc1, hcc2⟩ := cleanctx_split hcc hs
+      by_cases hN : NeedsT (Ty.arrow X b)
+      · exact no_trace_at_clean n hf (by rw [size_app] at hsz; omega) hfc1 hmc1 hlb1
+          hcc1 hN
+      · have hdx : NeedsT X ∨ NeedsC X ∨ NeedsK X :=
+          Classical.byContradiction fun hcon =>
+            hN ⟨hK, fun hd => hcon hd⟩
+        rcases hdx with hx | hx | hx
+        · exact no_trace_at_clean n ha (by rw [size_app] at hsz; omega) hfc2 hmc2 hlb2
+            hcc2 hx
+        · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+            extract_produce n hf (by rw [size_app] at hsz; omega) rfl
+              (by simp only [TokenThrough]; left; right; left; exact hx) hfc1 hmc1 hlb1 hcc1
+          exact no_trace_at_clean n h' hs2 hf2 hm2 hl2 hc2 hK
+        · obtain ⟨i, b', hpos, hneed⟩ := kprop ha hx
+          exact binderOK_notNeedsK (hcc2 i b' hpos) hneed
+  | n + 1, _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hsz, hfc, hmc, hlb,
+      hcc, hK => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hl = 0 ∧ mintCount hr = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hlb1, hlb2⟩ : liveBind hl = 0 ∧ liveBind hr = 0 := by
+        simpa only [liveBind, Nat.add_eq_zero_iff] using hlb
+      obtain ⟨hcc1, hcc2⟩ := cleanctx_split hcc hs
+      rcases hK with hK | hK
+      · exact no_trace_at_clean n hl (by rw [size_pair] at hsz; omega) hfc1 hmc1 hlb1
+          hcc1 hK
+      · exact no_trace_at_clean n hr (by rw [size_pair] at hsz; omega) hfc2 hmc2 hlb2
+          hcc2 hK
+  | n + 1, _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hsz, hfc, hmc,
+      hlb, hcc, hK => by
+      obtain ⟨hba, hbb, hlb1, hlb2⟩ := liveBind_lete_inv hs hlb
+      obtain ⟨hfc1, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hcc1, hcc2⟩ := cleanctx_split hcc hs
+      by_cases hbs : NeedsT a ∨ NeedsT b
+      · exact no_trace_at_clean n ht (by rw [size_lete] at hsz; omega) hfc1 hmc1 hlb1
+          hcc1 hbs
+      · refine no_trace_at_clean n hb (by rw [size_lete] at hsz; omega) hfc2 hmc2 hlb2
+          ?_ hK
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hbb
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hba
+            | succ k =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc2 k b' hpos
+  | n + 1, _, _, _, Typed.unit, _, _, _, _, _, hK => False.elim hK
+  | n + 1, _, _, _, @Typed.next Γ a t h, hsz, hfc, hmc, hlb, hcc, hK =>
+      no_trace_at_clean n h (by rw [size_next] at hsz; omega) hfc hmc hlb hcc hK
+  | n + 1, _, _, _, @Typed.fix _ _ _ _ _, _, hfc, _, _, _, _ =>
+      absurd hfc (by simp only [fixCount]; omega)
+  | n + 1, _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs, _, _, _, _, _, hK =>
+      False.elim hK
+  | n + 1, _, _, _, Typed.nil, _, _, hmc, _, _, _ =>
+      absurd hmc (by simp only [mintCount]; omega)
+  | n + 1, _, _, _, @Typed.snoc E Γ Δ t u ht hu hs, hsz, hfc, hmc, hlb, hcc, _ => by
+      obtain ⟨hfc1, _⟩ : fixCount ht = 0 ∧ fixCount hu = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount ht = 0 ∧ mintCount hu = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hlb1, _⟩ : liveBind ht = 0 ∧ liveBind hu = 0 := by
+        simpa only [liveBind, Nat.add_eq_zero_iff] using hlb
+      obtain ⟨hcc1, _⟩ := cleanctx_split hcc hs
+      exact no_trace_at_clean n ht (by rw [size_snoc] at hsz; omega) hfc1 hmc1 hlb1
+        hcc1 True.intro
+  | n + 1, _, _, _, Typed.gen, _, _, _, _, _, hK => hK.2 (Or.inr (Or.inr True.intro))
+  | n + 1, _, _, _, Typed.red, _, _, _, _, _, hK => False.elim hK.1
+  | n + 1, _, _, _, Typed.obj, _, _, _, _, _, hK => False.elim hK.1
+  | n + 1, _, _, _, Typed.terminate, _, _, _, _, _, hK =>
+      hK.2 (Or.inr (Or.inr True.intro))
+  | n + 1, _, _, _, @Typed.contr Γ k t τ hk h, hsz, hfc, hmc, hlb, hcc, hK => by
+      have hccc : CleanCtx (k :: k :: Γ) := by
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hcc 0 _ List.get?_zero_cons'
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hcc 0 _ List.get?_zero_cons'
+            | succ m' =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc (m' + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      exact no_trace_at_clean n h (by rw [size_contr] at hsz; omega)
+        (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+        (by simpa only [liveBind] using hlb) hccc hK
+  | n + 1, _, _, _, @Typed.weak Γ k t τ hk h, hsz, hfc, hmc, hlb, hcc, hK => by
+      have hccp : CleanCtx Γ := by
+        intro (i : Nat) (b' : Ty) hpos
+        exact hcc (i + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      exact no_trace_at_clean n h (by rw [size_weak] at hsz; omega)
+        (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+        (by simpa only [liveBind] using hlb) hccp hK
+
+/-! ## The kill: no inert-ending value swallows the token -/
+
+/-- Inert types carry no stream-demand (the `allInert_notNeedsT`
+template; `NeedsS`'s arrow-case is a triple conjunction, `.1` carries
+the codomain). -/
+theorem allInert_notNeedsS : ∀ a : Ty, allInert a = true → NeedsS a → False := by
+  intro a
+  induction a with
+  | content | knower | knowledge | value | unit => intro _ h; exact h
+  | stream | trace => intro hi _; exact Bool.noConfusion hi
+  | later a' ih => intro hi h; exact ih hi h
+  | tensor a' b' iha ihb =>
+      intro hi h
+      rcases h with h | h
+      · exact iha (by simp [allInert] at hi; exact hi.1) h
+      · exact ihb (by simp [allInert] at hi; exact hi.2) h
+  | arrow a' b' iha ihb =>
+      intro hi h
+      exact ihb (by simp [allInert] at hi; exact hi.2) h.1
+
+/-- A clean hypothesis carries no stream-demand either. -/
+theorem binderOK_notNeedsS {a : Ty} (hb : binderOK a = true) (h : NeedsS a) : False := by
+  by_cases hac : a = Ty.content
+  · subst hac; exact h
+  · have hq : (a == Ty.content) = false := by
+      rcases Bool.eq_false_or_eq_true (a == Ty.content) with h1 | h1
+      · exact absurd (eq_of_beq h1) hac
+      · exact h1
+    rw [binderOK, hq, Bool.false_or] at hb
+    exact allInert_notNeedsS _ hb h
+
+/-- Inert types end in inert. -/
+theorem allInert_endsInInert : ∀ a : Ty, allInert a = true → endsInInert a = true := by
+  intro a
+  induction a with
+  | content | knower | knowledge | value | stream | trace | unit => intro hi; exact hi
+  | later a' ih => intro hi; exact hi
+  | tensor a' b' _ _ => intro hi; exact hi
+  | arrow a' b' _ ihb =>
+      intro hi
+      exact ihb (by simp [allInert] at hi; exact hi.2)
+
+/-- The GAP-CLASS: need-free, non-inert, not the token, and NOT a
+token-consumer. Values of such types cannot be CONSUMED in the clean
+fragment: the consumer's λ-bottom binds one (liveBind-banned), a
+var-bottom holds one (CleanCtx-banned), and no constant's type carries
+one (their domains are stream/knower — need-carrying). This class is
+what the five-row table's else-row dispatches on — and note what it
+EXCLUDES: `arrow content content` (the identity type) is NOT gap-class
+(it is a token-consumer), which is why the extract-contradiction row
+handles it and this lemma never has to. -/
+def D2 (τ : Ty) : Prop :=
+  binderOK τ = false ∧ τ ≠ Ty.content ∧ ¬HasTokenDomain τ ∧ ¬NeedsC τ ∧ ¬NeedsK τ ∧
+    ¬NeedsS τ ∧ ¬NeedsT τ
+
+/-- Some domain in the arrow-spine is gap-class. -/
+def hasD2Domain : Ty → Prop
+  | .arrow a σ => D2 a ∨ hasD2Domain σ
+  | _ => False
+
+theorem hasD2Domain_notbinderOK : ∀ τ : Ty, hasD2Domain τ → binderOK τ = false := by
+  intro τ
+  induction τ with
+  | content | knower | knowledge | value | stream | trace | unit | later _ | tensor _ _ =>
+      intro h; exact h.elim
+  | arrow a' b' _ ihb =>
+      intro h
+      rcases h with hd | hd
+      · have hai : allInert a' = false := by
+          obtain ⟨hbo, _⟩ := hd
+          exact (Bool.or_eq_false_iff.mp hbo).2
+        simp only [binderOK, allInert, hai, Bool.false_and, Bool.or_false]; rfl
+      · have hbi : allInert b' = false := (Bool.or_eq_false_iff.mp (ihb hd)).2
+        rw [binderOK, allInert, hbi, Bool.and_false, Bool.or_false]; rfl
+
+/-- NO D2-CONSUMER: in the liveBind-clean fix-free mint-free fragment,
+no derivation at a clean context consumes a gap-class argument. The
+λ-bottom is liveBind-banned, the var-bottom CleanCtx-banned, the four
+constants type-banned (their domains need things, so they are not
+gap-class); spines and lete-bodies recurse type-preservingly. This is
+the producer-side kill that replaces the unsound recursion INTO
+gap-class arguments (obs 44's correction). -/
+theorem no_d2_producer :
+    ∀ (n : Nat), ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ),
+    size h ≤ n → hasD2Domain τ → fixCount h = 0 → mintCount h = 0 →
+    liveBind h = 0 → CleanCtx Γ → False
+  | 0, _, _, _, h, hn, _, _, _, _, _ => absurd hn (Nat.not_le_of_lt (size_pos h))
+  | n + 1, _, _, _, Typed.var, _, hdom, _, _, _, hcc => by
+      have hb := hasD2Domain_notbinderOK _ hdom
+      have hbt := hcc 0 _ List.get?_zero_cons'
+      rw [hb] at hbt
+      exact Bool.noConfusion hbt
+  | n + 1, _, _, _, @Typed.lam Γ a b body h, hsz, hdom, hfc, hmc, hlb, hcc => by
+      obtain ⟨hbY, hlb1⟩ := liveBind_lam_inv h hlb
+      rcases hdom with hd | hd
+      · rw [hd.1] at hbY
+        exact Bool.noConfusion hbY
+      · refine no_d2_producer n h (by rw [size_lam] at hsz; omega) hd ?_ ?_ hlb1 ?_
+        · simpa only [fixCount] using hfc
+        · simpa only [mintCount] using hmc
+        · intro (i : Nat) (b' : Ty) hpos
+          cases i with
+          | zero =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with he
+              subst he
+              exact hbY
+          | succ m =>
+              rw [List.get?_succ_cons'] at hpos
+              exact hcc m b' hpos
+  | n + 1, _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hsz, hdom, hfc, hmc, hlb,
+      hcc => by
+      obtain ⟨hfc1, _⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hlb1, _⟩ : liveBind hf = 0 ∧ liveBind ha = 0 := by
+        simpa only [liveBind, Nat.add_eq_zero_iff] using hlb
+      obtain ⟨hcc1, _⟩ := cleanctx_split hcc hs
+      exact no_d2_producer n hf (by rw [size_app] at hsz; omega) (Or.inr hdom) hfc1 hmc1
+        hlb1 hcc1
+  | n + 1, _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hsz, hdom, hfc, hmc,
+      hlb, hcc => by
+      obtain ⟨hba, hbb, _, hlb2⟩ := liveBind_lete_inv hs hlb
+      obtain ⟨_, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨_, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨_, hcc2⟩ := cleanctx_split hcc hs
+      refine no_d2_producer n hb (by rw [size_lete] at hsz; omega) hdom hfc2 hmc2 hlb2 ?_
+      intro (i : Nat) (b' : Ty) hpos
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          exact hbb
+      | succ m =>
+          cases m with
+          | zero =>
+              rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+              injection hpos with he
+              subst he
+              exact hba
+          | succ k =>
+              rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+              exact hcc2 k b' hpos
+  | n + 1, _, _, _, Typed.unit, _, hdom, _, _, _, _ => hdom.elim
+  | n + 1, _, _, _, @Typed.next _ _ _ _, _, hdom, _, _, _, _ => hdom.elim
+  | n + 1, _, _, _, @Typed.fix _ _ _ _ _, _, _, hfc, _, _, _ =>
+      absurd hfc (by simp only [fixCount]; omega)
+  | n + 1, _, _, _, Typed.cons hc ht hs, _, hdom, _, _, _, _ => hdom.elim
+  | n + 1, _, _, _, Typed.nil, _, hdom, _, _, _, _ => hdom.elim
+  | n + 1, _, _, _, Typed.snoc ht hu hs, _, hdom, _, _, _, _ => hdom.elim
+  | n + 1, _, _, _, Typed.gen, _, hdom, _, _, _, _ => by
+      rcases hdom with hd | hd
+      · exact hd.2.2.2.2.1 True.intro
+      · exact hd.elim
+  | n + 1, _, _, _, Typed.red, _, hdom, _, _, _, _ => by
+      rcases hdom with hd | hd
+      · exact hd.2.2.2.2.2.1 True.intro
+      · exact hd.elim
+  | n + 1, _, _, _, Typed.obj, _, hdom, _, _, _, _ => by
+      rcases hdom with hd | hd
+      · exact hd.2.2.2.2.2.1 True.intro
+      · exact hd.elim
+  | n + 1, _, _, _, Typed.terminate, _, hdom, _, _, _, _ => by
+      rcases hdom with hd | hd
+      · exact hd.2.2.2.2.1 True.intro
+      · exact hd.elim
+  | n + 1, _, _, _, @Typed.contr Γ k t τ hk h, hsz, hdom, hfc, hmc, hlb, hcc => by
+      refine no_d2_producer n h (by rw [size_contr] at hsz; omega) hdom ?_ ?_ ?_ ?_
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+      · simpa only [liveBind] using hlb
+      · intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hcc 0 _ List.get?_zero_cons'
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hcc 0 _ List.get?_zero_cons'
+            | succ m' =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc (m' + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+  | n + 1, _, _, _, @Typed.weak Γ k t τ hk h, hsz, hdom, hfc, hmc, hlb, hcc => by
+      refine no_d2_producer n h (by rw [size_weak] at hsz; omega) hdom ?_ ?_ ?_ ?_
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+      · simpa only [liveBind] using hlb
+      · intro (i : Nat) (b' : Ty) hpos
+        exact hcc (i + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+
+/-- THE CONDITIONAL KILL: in the liveBind-clean fix-free mint-free
+fragment, no inert-ending conclusion can swallow the token — the token
+must die, and every death-route is banned or bottoms at a closed value.
+The app-case is the five-row table on the consumed type X:
+(1) X = content → extract the producer, the produce-body's binder IS
+the token (CleanCtx forces the extracted binder to be binderOK, and a
+content-carrying binderOK type is the token); (2) NeedsC X → extract,
+the concluded CleanCtx contradicts needsC_notallInert (the binder would
+have to be the token); (3) HasTokenDomain X → extract, same
+contradiction; (4) NeedsK/NeedsS/NeedsT X → the supply lemmas kill the
+argument; (5) else X is inert (recurse — an inert value cannot swallow
+the token) or gap-class (no_d2_producer kills the CONSUMER — obs 44's
+correction: never recurse into the gap-argument itself). -/
+theorem kill_clean :
+    ∀ (n : Nat), ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ),
+    size h ≤ n → fixCount h = 0 → mintCount h = 0 → liveBind h = 0 →
+    CleanCtx Γ → (∃ (i : Nat), Γ[i]? = some Ty.content) →
+    endsInInert τ = true → False
+  | 0, _, _, _, h, hn, _, _, _, _, _, _ => absurd hn (Nat.not_le_of_lt (size_pos h))
+  | n + 1, _, _, _, Typed.var, _, _, _, _, hcc, htok, hE => by
+      obtain ⟨i, hpos⟩ := htok
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          simp only [endsInInert, allInert] at hE
+          exact Bool.noConfusion hE
+      | succ m =>
+          rw [List.get?_succ_cons'] at hpos
+          rw [List.get?_nil'] at hpos
+          contradiction
+  | n + 1, _, _, _, @Typed.lam Γ a b body h, hsz, hfc, hmc, hlb, hcc, htok, hE => by
+      obtain ⟨hbY, hlb1⟩ := liveBind_lam_inv h hlb
+      have hbod : endsInInert b = true := by
+        rw [endsInInert] at hE; exact hE
+      refine kill_clean n h (by rw [size_lam] at hsz; omega) ?_ ?_ hlb1 ?_ ?_ hbod
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+      · intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hbY
+        | succ m =>
+            rw [List.get?_succ_cons'] at hpos
+            exact hcc m b' hpos
+      · by_cases hac : a = Ty.content
+        · rw [hac]
+          exact ⟨0, List.get?_zero_cons'⟩
+        · obtain ⟨i, hpos⟩ := htok
+          exact ⟨i + 1, by rw [List.get?_succ_cons']; exact hpos⟩
+  | n + 1, _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hsz, hfc, hmc, hlb, hcc,
+      htok, hE => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hlb1, hlb2⟩ : liveBind hf = 0 ∧ liveBind ha = 0 := by
+        simpa only [liveBind, Nat.add_eq_zero_iff] using hlb
+      obtain ⟨hcc1, hcc2⟩ := cleanctx_split hcc hs
+      obtain ⟨i, hpos⟩ := htok
+      by_cases hlt : i < Γ.length
+      · refine kill_clean n hf (by rw [size_app] at hsz; omega) hfc1 hmc1 hlb1 hcc1 ?_ ?_
+        · exact ⟨i, by rw [← hs, List.get?_append_lt hlt] at hpos; exact hpos⟩
+        · rw [endsInInert]; exact hE
+      · have hge : Γ.length ≤ i := Nat.le_of_not_lt hlt
+        rw [← hs, List.get?_append_ge hge] at hpos
+        by_cases hx0 : X = Ty.content
+        · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+            extract_produce n hf (by rw [size_app] at hsz; omega) rfl
+              (by simp only [TokenThrough]; left; left; exact hx0) hfc1 hmc1 hlb1 hcc1
+          exact kill_clean n h' hs2 hf2 hm2 hl2 hc2
+            ⟨0, by rw [List.get?_zero_cons', hx0]⟩ hE
+        · by_cases hx1 : NeedsC X
+          · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+              extract_produce n hf (by rw [size_app] at hsz; omega) rfl
+                (by simp only [TokenThrough]; left; right; left; exact hx1) hfc1 hmc1 hlb1
+                hcc1
+            have hq : (X == Ty.content) = false := by
+              rcases Bool.eq_false_or_eq_true (X == Ty.content) with h1 | h1
+              · exact absurd (eq_of_beq h1) hx0
+              · exact h1
+            have hbx := hc2 0 _ List.get?_zero_cons'
+            rw [binderOK, hq, Bool.false_or] at hbx
+            rw [needsC_notallInert X hx1] at hbx
+            exact Bool.noConfusion hbx
+          · by_cases hx2 : HasTokenDomain X
+            · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+                extract_produce n hf (by rw [size_app] at hsz; omega) rfl
+                  (by simp only [TokenThrough]; left; right; right; exact hx2) hfc1 hmc1
+                  hlb1 hcc1
+              have hq : (X == Ty.content) = false := by
+                rcases Bool.eq_false_or_eq_true (X == Ty.content) with h1 | h1
+                · exact absurd (eq_of_beq h1) hx0
+                · exact h1
+              have hbx := hc2 0 _ List.get?_zero_cons'
+              rw [binderOK, hq, Bool.false_or] at hbx
+              rw [hasTokenDomain_notallInert X hx2] at hbx
+              exact Bool.noConfusion hbx
+            · by_cases hx3 : NeedsK X
+              · obtain ⟨j, b', hpos', hneed⟩ := kprop ha hx3
+                exact binderOK_notNeedsK (hcc2 j b' hpos') hneed
+              · by_cases hx4 : NeedsS X
+                · refine no_stream_without_supply n ha
+                    (by rw [size_app] at hsz; omega) hfc2 ?_ hx4
+                  intro (j : Nat) (b' : Ty) hpos'
+                  have hbo := hcc2 j b' hpos'
+                  by_cases hbc : b' = Ty.content
+                  · subst hbc; intro hsup; rcases hsup with h | h
+                    · exact h
+                    · exact h
+                  · have hq : (b' == Ty.content) = false := by
+                      rcases Bool.eq_false_or_eq_true (b' == Ty.content) with h1 | h1
+                      · exact absurd (eq_of_beq h1) hbc
+                      · exact h1
+                    rw [binderOK, hq, Bool.false_or] at hbo
+                    intro hsup
+                    rcases hsup with h | h
+                    · exact allInert_notNeedsS _ hbo h
+                    · exact allInert_notNeedsK _ hbo h
+                · by_cases hx5 : NeedsT X
+                  · exact no_trace_at_clean n ha (by rw [size_app] at hsz; omega) hfc2
+                      hmc2 hlb2 hcc2 hx5
+                  · rcases Bool.eq_false_or_eq_true (binderOK X) with hbx | hbx
+                    · rcases Bool.eq_false_or_eq_true (X == Ty.content) with h1 | h1
+                      · exact absurd (eq_of_beq h1) hx0
+                      · have hai : allInert X = true := by
+                          rw [binderOK, h1, Bool.false_or] at hbx
+                          exact hbx
+                        exact kill_clean n ha (by rw [size_app] at hsz; omega) hfc2 hmc2
+                          hlb2 hcc2 ⟨i - Γ.length, hpos⟩ (allInert_endsInInert X hai)
+                    · exact no_d2_producer n hf (by rw [size_app] at hsz; omega)
+                        (Or.inl ⟨hbx, hx0, hx2, hx1, hx3, hx4, hx5⟩) hfc1 hmc1 hlb1 hcc1
+  | n + 1, _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hsz, hfc, hmc, hlb, hcc,
+      htok, hE => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hl = 0 ∧ mintCount hr = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hlb1, hlb2⟩ : liveBind hl = 0 ∧ liveBind hr = 0 := by
+        simpa only [liveBind, Nat.add_eq_zero_iff] using hlb
+      obtain ⟨hcc1, hcc2⟩ := cleanctx_split hcc hs
+      obtain ⟨hia, hib⟩ : allInert a = true ∧ allInert b = true := by
+        simp only [endsInInert, allInert, Bool.and_eq_true] at hE
+        exact hE
+      obtain ⟨i, hpos⟩ := htok
+      by_cases hlt : i < Γ.length
+      · rw [← hs, List.get?_append_lt hlt] at hpos
+        exact kill_clean n hl (by rw [size_pair] at hsz; omega) hfc1 hmc1 hlb1 hcc1
+          ⟨i, hpos⟩ (allInert_endsInInert a hia)
+      · have hge : Γ.length ≤ i := Nat.le_of_not_lt hlt
+        rw [← hs, List.get?_append_ge hge] at hpos
+        exact kill_clean n hr (by rw [size_pair] at hsz; omega) hfc2 hmc2 hlb2 hcc2
+          ⟨i - Γ.length, hpos⟩ (allInert_endsInInert b hib)
+  | n + 1, _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hsz, hfc, hmc, hlb,
+      hcc, htok, hE => by
+      obtain ⟨hba, hbb, hlb1, hlb2⟩ := liveBind_lete_inv hs hlb
+      obtain ⟨hfc1, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hcc1, hcc2⟩ := cleanctx_split hcc hs
+      have hbodyctx : CleanCtx (b :: a :: Γ₂) := by
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hbb
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hba
+            | succ k =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc2 k b' hpos
+      by_cases hcb : a = Ty.content ∨ b = Ty.content
+      · rcases hcb with rfl | rfl
+        · exact kill_clean n hb (by rw [size_lete] at hsz; omega) hfc2 hmc2 hlb2 hbodyctx
+            ⟨1, by rw [List.get?_succ_cons']; exact List.get?_zero_cons'⟩ hE
+        · exact kill_clean n hb (by rw [size_lete] at hsz; omega) hfc2 hmc2 hlb2 hbodyctx
+            ⟨0, List.get?_zero_cons'⟩ hE
+      · obtain ⟨i, hpos⟩ := htok
+        by_cases hlt : i < Γ₁.length
+        · rw [← hs, List.get?_append_lt hlt] at hpos
+          have hia : allInert a = true := by
+            rcases Bool.eq_false_or_eq_true (a == Ty.content) with h1 | h1
+            · exact absurd (eq_of_beq h1) (fun hc => hcb (Or.inl hc))
+            · rw [binderOK, h1, Bool.false_or] at hba
+              exact hba
+          have hib : allInert b = true := by
+            rcases Bool.eq_false_or_eq_true (b == Ty.content) with h1 | h1
+            · exact absurd (eq_of_beq h1) (fun hc => hcb (Or.inr hc))
+            · rw [binderOK, h1, Bool.false_or] at hbb
+              exact hbb
+          exact kill_clean n ht (by rw [size_lete] at hsz; omega) hfc1 hmc1 hlb1 hcc1
+            ⟨i, hpos⟩ (allInert_endsInInert (Ty.tensor a b) (by
+              simp [allInert, hia, hib]))
+        · have hge : Γ₁.length ≤ i := Nat.le_of_not_lt hlt
+          rw [← hs, List.get?_append_ge hge] at hpos
+          exact kill_clean n hb (by rw [size_lete] at hsz; omega) hfc2 hmc2 hlb2 hbodyctx
+            ⟨i - Γ₁.length + 2, by
+              rw [List.get?_succ_cons', List.get?_succ_cons']; exact hpos⟩ hE
+  | n + 1, _, _, _, Typed.unit, _, _, _, _, _, htok, _ => by
+      obtain ⟨i, hpos⟩ := htok
+      rw [List.get?_nil'] at hpos
+      contradiction
+  | n + 1, _, _, _, @Typed.next Γ a t h, hsz, hfc, hmc, hlb, hcc, htok, hE =>
+      kill_clean n h (by rw [size_next] at hsz; omega) hfc hmc hlb hcc htok
+        (allInert_endsInInert a (by
+          simp only [endsInInert, allInert] at hE; exact hE))
+  | n + 1, _, _, _, @Typed.fix _ _ _ _ _, _, hfc, _, _, _, _, _ =>
+      absurd hfc (by simp only [fixCount]; omega)
+  | n + 1, _, _, _, Typed.cons hc ht hs, _, _, _, _, _, _, hE => by
+      simp only [endsInInert, allInert] at hE
+      exact Bool.noConfusion hE
+  | n + 1, _, _, _, Typed.nil, _, _, _, _, _, htok, _ => by
+      obtain ⟨i, hpos⟩ := htok
+      rw [List.get?_nil'] at hpos
+      contradiction
+  | n + 1, _, _, _, Typed.snoc ht hu hs, _, _, _, _, _, _, hE => by
+      simp only [endsInInert, allInert] at hE
+      exact Bool.noConfusion hE
+  | n + 1, _, _, _, Typed.gen, _, _, _, _, _, htok, _ => by
+      obtain ⟨i, hpos⟩ := htok
+      rw [List.get?_nil'] at hpos
+      contradiction
+  | n + 1, _, _, _, Typed.red, _, _, _, _, _, htok, _ => by
+      obtain ⟨i, hpos⟩ := htok
+      rw [List.get?_nil'] at hpos
+      contradiction
+  | n + 1, _, _, _, Typed.obj, _, _, _, _, _, htok, _ => by
+      obtain ⟨i, hpos⟩ := htok
+      rw [List.get?_nil'] at hpos
+      contradiction
+  | n + 1, _, _, _, Typed.terminate, _, _, _, _, _, htok, _ => by
+      obtain ⟨i, hpos⟩ := htok
+      rw [List.get?_nil'] at hpos
+      contradiction
+  | n + 1, _, _, _, @Typed.contr Γ k t τ hk h, hsz, hfc, hmc, hlb, hcc, htok, hE => by
+      have hne : k ≠ Ty.content := by
+        intro hc
+        subst hc
+        rw [needsC_linear Ty.content True.intro] at hk
+        exact Bool.noConfusion hk
+      refine kill_clean n h (by rw [size_contr] at hsz; omega) ?_ ?_ ?_ ?_ ?_ hE
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+      · simpa only [liveBind] using hlb
+      · intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hcc 0 _ List.get?_zero_cons'
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hcc 0 _ List.get?_zero_cons'
+            | succ m' =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc (m' + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      · obtain ⟨i, hpos⟩ := htok
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            exact absurd he hne
+        | succ m =>
+            rw [List.get?_succ_cons'] at hpos
+            exact ⟨m + 2, by
+              rw [List.get?_succ_cons', List.get?_succ_cons']; exact hpos⟩
+  | n + 1, _, _, _, @Typed.weak Γ k t τ hk h, hsz, hfc, hmc, hlb, hcc, htok, hE => by
+      have hne : k ≠ Ty.content := by
+        intro hc
+        subst hc
+        rw [needsC_linear Ty.content True.intro] at hk
+        exact Bool.noConfusion hk
+      refine kill_clean n h (by rw [size_weak] at hsz; omega) ?_ ?_ ?_ ?_ ?_ hE
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+      · simpa only [liveBind] using hlb
+      · intro (i : Nat) (b' : Ty) hpos
+        exact hcc (i + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      · obtain ⟨i, hpos⟩ := htok
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            exact absurd he hne
+        | succ m =>
+            rw [List.get?_succ_cons'] at hpos
+            exact ⟨m, hpos⟩
+
+/-- NO VANISHING, clean fragment: in the liveBind-clean fix-free
+mint-free fragment the token cannot vanish into a `unit` conclusion —
+the standard `A ⊬ 1`, at its deepest fragment yet (gen, cons, snoc and
+the structural rules are INSIDE; only fixpoints, trace-mints and live
+binders are excluded). -/
+theorem no_vanishing_clean {t : Term} (h : Typed [Ty.content] t Ty.unit)
+    (hf : fixCount h = 0) (hm : mintCount h = 0) (hl : liveBind h = 0) : False :=
+  kill_clean (size h) h (Nat.le_refl _) hf hm hl
+    (by
+      intro (i : Nat) (b : Ty) hpos
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          rfl
+      | succ m =>
+          rw [List.get?_succ_cons'] at hpos
+          rw [List.get?_nil'] at hpos
+          contradiction)
+    ⟨0, List.get?_zero_cons'⟩
+    rfl
+
 end Dcare

@@ -9,6 +9,7 @@ import Dcare.Flow
 import Dcare.Adversaries
 import Dcare.Constructive
 import Dcare.SelfApp
+import Dcare.Path
 
 /-!
 # Axiom audit (run by scripts/lean-check.sh, NOT part of the library)
@@ -69,3 +70,13 @@ Rules:
 #print axioms Dcare.spin_pays_forever_buys_nothing
 #print axioms Dcare.extractor_never_consults
 #print axioms Dcare.extractor_step_integrates
+#print axioms Dcare.no_stream_without_supply
+#print axioms Dcare.no_closed_later_stream
+#print axioms Dcare.cprop
+#print axioms Dcare.sprop
+#print axioms Dcare.tprop
+#print axioms Dcare.extract_produce
+#print axioms Dcare.no_trace_at_clean
+#print axioms Dcare.no_d2_producer
+#print axioms Dcare.kill_clean
+#print axioms Dcare.no_vanishing_clean
