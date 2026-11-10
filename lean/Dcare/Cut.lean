@@ -124,4 +124,5 @@ theorem append_cancel_right : ∀ (ΓL Γ₁ Δ₁ : List Ty) (a : Ty) (ΓR : Li
                 subst hR
                 exact ⟨[], rfl, by simp⟩
 
+
 end Dcare

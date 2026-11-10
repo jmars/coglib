@@ -115,6 +115,33 @@ theorem liftN_tsize : ∀ (n : Nat) (t : Term), tsize (Term.liftN n t) = tsize t
   | zero => rfl
   | succ n' ih => rw [Term.liftN, ih (Term.liftAt 0 t), liftAt_tsize 0 t]
 
+/-- Contraction renaming preserves term size. -/
+theorem mergeAt_tsize : ∀ (d : Nat) (t : Term), tsize (Term.mergeAt d t) = tsize t := by
+  intro d t
+  induction t generalizing d with
+  | var i =>
+      simp only [Term.mergeAt]
+      by_cases h1 : i = d + 1
+      · rw [if_pos h1]; simp [tsize]
+      · rw [if_neg h1]
+        by_cases h2 : d + 1 < i
+        · rw [if_pos h2]; simp [tsize]
+        · rw [if_neg h2]
+  | lam a b ih => simp only [Term.mergeAt, tsize, ih (d + 1)]
+  | app f x ihf ihx => simp only [Term.mergeAt, tsize, ihf d, ihx d]
+  | pair l r ihl ihr => simp only [Term.mergeAt, tsize, ihl d, ihr d]
+  | lete t b iht ihb => simp only [Term.mergeAt, tsize, iht d, ihb (d + 2)]
+  | unit => rfl
+  | next t ih => simp only [Term.mergeAt, tsize, ih d]
+  | fix t ih => simp only [Term.mergeAt, tsize, ih d]
+  | cons h t ihh iht => simp only [Term.mergeAt, tsize, ihh d, iht d]
+  | nil => rfl
+  | snoc t u iht ihu => simp only [Term.mergeAt, tsize, iht d, ihu d]
+  | gen => rfl
+  | red => rfl
+  | obj => rfl
+  | terminate => rfl
+
 /-- THE SUBSTITUTION SIZE LAW: substitution replaces each occurrence of
 the substituted variable (size 1) by a copy of `arg`, so the size moves
 by `occCount * (size arg - 1)`. Integer-valued to avoid truncation; the
