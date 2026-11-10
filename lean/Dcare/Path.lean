@@ -1169,6 +1169,10 @@ theorem size_contr {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear
 theorem size_weak {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false} (h : Typed Γ t τ) :
     size (Typed.weak hk h) = 1 + size h := rfl
 
+theorem size_fix {Γ : List Ty} {a : Ty} {body : Term} {hΓ : AllNonLinear Γ}
+    (h : Typed Γ body (.arrow (.later a) a)) :
+    size (Typed.fix hΓ h) = 1 + size h := rfl
+
 /-- NO STREAM WITHOUT SUPPLY (fix-free): every stream-needing derivation
 needs a stream-carrying or knower hypothesis. This is `sprop` with the
 conclusion-side WIDENED from `τ = stream` to `NeedsS τ` — the widening
@@ -3487,7 +3491,7 @@ premises and sizes strictly decreasing. -/
 /-- `Prem c v`: `v` is a DIRECT premise of `c` — the slot map for the
 chase's parent-analysis. -/
 inductive Prem : {E : List Ty} → {tc : Term} → {τc : Ty} → Typed E tc τc →
-    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Type where
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop where
   | lamP {a b body} {h : Typed (a :: E) body b} : Prem (.lam h) h
   | appFP {Γ Δ X b fn arg} {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X}
       {hs : Γ ++ Δ = E} : Prem (.app hf ha hs) hf
@@ -3520,7 +3524,7 @@ inductive Prem : {E : List Ty} → {tc : Term} → {τc : Ty} → Typed E tc τc
 matching a `step` exposes the parent's path and the slot `v` occupies
 there. -/
 inductive Path {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀) :
-    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Type where
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop where
   | here : Path root root
   | step {E tc τc} {c : Typed E tc τc} {Γ t τ} {v : Typed Γ t τ}
       (p : Path root c) (s : Prem c v) : Path root v
@@ -3658,5 +3662,195 @@ theorem lam_no_producer {Γ : List Ty} {c σ : Ty} {body : Term}
     simp only [tSpend]
     exact wSpendFrom_nonpos_all 0 (c :: Γ) (uses h) hnp
   omega
+
+/-! ## The read-locator: a spent position's read, with its parent -/
+
+/-- READ-LOCATE: a spent position is read by a var-node in one of three
+positions: deep (the read sits under a strict subderivation-parent),
+direct (one of `d`'s own premises is the read), or top (`d` itself is
+the read). The locator descends by `uses`' own split arithmetic — the
+position flows to exactly one premise at each rule. The consumer round
+case-maps on the returned `Prem` slot; the var-evidence travels as
+explicit equalities (no casts across the Type-valued family). -/
+theorem read_locate : ∀ (n : Nat) {Γ : List Ty} {τ : Ty} {t : Term} (d : Typed Γ t τ),
+    size d ≤ n → ∀ (i : Nat) (a : Ty), Γ[i]? = some a → uses d i ≥ 1 →
+    (∃ (E : List Ty) (tp : Term) (τp : Ty) (p : Typed E tp τp),
+        Sub d p ∧ ∃ (Γv : List Ty) (tv : Term) (τv : Ty) (v : Typed Γv tv τv),
+          Prem p v ∧ tv = Term.var 0 ∧ τv = a)
+    ∨ (∃ (Γv : List Ty) (tv : Term) (τv : Ty) (v : Typed Γv tv τv),
+          Prem d v ∧ tv = Term.var 0 ∧ τv = a)
+    ∨ (Γ = [a] ∧ t = Term.var 0 ∧ τ = a ∧ i = 0)
+  | _, _, _, _, Typed.var, _, i, a, hpos, _ => by
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          exact Or.inr (Or.inr ⟨rfl, rfl, rfl, rfl⟩)
+      | succ m =>
+          rw [List.get?_succ_cons'] at hpos
+          rw [List.get?_nil'] at hpos
+          contradiction
+  | 0, _, _, _, h, hn, _, _, _, _ => absurd hn (Nat.not_le_of_lt (size_pos h))
+  | n + 1, _, _, _, @Typed.lam Γ c b body hbody, hn, i, a, hpos, hus => by
+      rcases read_locate n hbody (by rw [size_lam] at hn; omega) (i + 1) a
+        (by rw [List.get?_succ_cons']; exact hpos)
+        (by simpa only [uses] using hus) with
+        ⟨E, tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, _, _, hi⟩
+      · exact Or.inl ⟨E, tp, τp, p, Sub.lam hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+      · exact Or.inl ⟨_, _, _, hbody, Sub.lamD, Γv, tv, τv, v, hprem, htv, hτv⟩
+      · omega
+  | n + 1, _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hn, i, a, hpos, hus => by
+      by_cases hlt : i < Γ.length
+      · rcases read_locate n hf (by rw [size_app] at hn; omega) i a
+          (by rw [← hs, List.get?_append_lt hlt] at hpos; exact hpos)
+          (by simpa only [uses, if_pos hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.appL hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, hf, Sub.appLD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Γ, fn, Ty.arrow X b, hf, Prem.appFP, htv, hτv⟩)
+      · have hge : Γ.length ≤ i := Nat.not_lt.mp hlt
+        rcases read_locate n ha (by rw [size_app] at hn; omega) (i - Γ.length) a
+          (by rw [← hs, List.get?_append_ge hge] at hpos; exact hpos)
+          (by simpa only [uses, if_neg hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.appR hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, ha, Sub.appRD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Δ, arg, X, ha, Prem.appAP, htv, hτv⟩)
+  | n + 1, _, _, _, @Typed.pair E Γ Δ x y l r hl hr hs, hn, i, a, hpos, hus => by
+      by_cases hlt : i < Γ.length
+      · rcases read_locate n hl (by rw [size_pair] at hn; omega) i a
+          (by rw [← hs, List.get?_append_lt hlt] at hpos; exact hpos)
+          (by simpa only [uses, if_pos hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.pairL hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, hl, Sub.pairLD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Γ, l, x, hl, Prem.pairLP, htv, hτv⟩)
+      · have hge : Γ.length ≤ i := Nat.not_lt.mp hlt
+        rcases read_locate n hr (by rw [size_pair] at hn; omega) (i - Γ.length) a
+          (by rw [← hs, List.get?_append_ge hge] at hpos; exact hpos)
+          (by simpa only [uses, if_neg hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.pairR hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, hr, Sub.pairRD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Δ, r, y, hr, Prem.pairRP, htv, hτv⟩)
+  | n + 1, _, _, _, @Typed.lete E Γ₁ Γ₂ x y c t body ht hb hs, hn, i, a, hpos, hus => by
+      by_cases hlt : i < Γ₁.length
+      · rcases read_locate n ht (by rw [size_lete] at hn; omega) i a
+          (by rw [← hs, List.get?_append_lt hlt] at hpos; exact hpos)
+          (by simpa only [uses, if_pos hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.leteT hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, ht, Sub.leteTD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Γ₁, t, Ty.tensor x y, ht, Prem.leteTP, htv, hτv⟩)
+      · have hge : Γ₁.length ≤ i := Nat.not_lt.mp hlt
+        rcases read_locate n hb (by rw [size_lete] at hn; omega) (i - Γ₁.length + 2) a
+          (by rw [List.get?_add_two, ← List.get?_append_ge hge, hs]; exact hpos)
+          (by simpa only [uses, if_neg hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.leteB hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, hb, Sub.leteBD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨y :: x :: Γ₂, body, c, hb, Prem.leteBP, htv, hτv⟩)
+  | n + 1, _, _, _, @Typed.next Γ x t h, hn, i, a, hpos, hus => by
+      rcases read_locate n h (by rw [size_next] at hn; omega) i a hpos hus with
+        ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+      · exact Or.inl ⟨E', tp, τp, p, Sub.next hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+      · exact Or.inl ⟨_, _, _, h, Sub.nextD, Γv, tv, τv, v, hprem, htv, hτv⟩
+      · exact Or.inr (Or.inl ⟨Γ, t, x, h, Prem.nextP, htv, hτv⟩)
+  | n + 1, _, _, _, @Typed.fix Γ x body hΓ h, hn, i, a, hpos, hus => by
+      rcases read_locate n h (by rw [size_fix] at hn; omega) i a hpos hus with
+        ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+      · exact Or.inl ⟨E', tp, τp, p, Sub.fix hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+      · exact Or.inl ⟨_, _, _, h, Sub.fixD, Γv, tv, τv, v, hprem, htv, hτv⟩
+      · exact Or.inr (Or.inl ⟨Γ, body, Ty.arrow (Ty.later x) x, h, Prem.fixP, htv, hτv⟩)
+  | n + 1, _, _, _, @Typed.contr Γ k t τ hk h, hn, i, a, hpos, hus => by
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with hka
+          have hsplit : uses h 0 + uses h 1 ≥ 1 := hus
+          rcases Nat.lt_or_ge (uses h 0) 1 with hlt | hge
+          · rcases read_locate n h (by rw [size_contr] at hn; omega) 1 a
+              (by rw [List.get?_succ_cons', hka]; rfl) (by omega) with
+              ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+            · exact Or.inl ⟨E', tp, τp, p, Sub.contr hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+            · exact Or.inl ⟨_, _, _, h, Sub.contrD, Γv, tv, τv, v, hprem, htv, hτv⟩
+            · exact Or.inr (Or.inl ⟨k :: k :: Γ, Term.mergeAt 0 t, τ, h, Prem.contrP, htv, hτv⟩)
+          · rcases read_locate n h (by rw [size_contr] at hn; omega) 0 a
+              (by rw [hka]; rfl) (by omega) with
+              ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+            · exact Or.inl ⟨E', tp, τp, p, Sub.contr hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+            · exact Or.inl ⟨_, _, _, h, Sub.contrD, Γv, tv, τv, v, hprem, htv, hτv⟩
+            · exact Or.inr (Or.inl ⟨k :: k :: Γ, Term.mergeAt 0 t, τ, h, Prem.contrP, htv, hτv⟩)
+      | succ m =>
+          have hus' : uses h (m + 1 + 1) ≥ 1 := by
+            simpa only [uses, if_neg (Nat.succ_ne_zero m)] using hus
+          rw [List.get?_succ_cons'] at hpos
+          rcases read_locate n h (by rw [size_contr] at hn; omega) (m + 1 + 1) a
+            (by rw [List.get?_add_two]; exact hpos) hus' with
+            ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, _, _, hi⟩
+          · exact Or.inl ⟨E', tp, τp, p, Sub.contr hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+          · exact Or.inl ⟨_, _, _, h, Sub.contrD, Γv, tv, τv, v, hprem, htv, hτv⟩
+          · omega
+  | n + 1, _, _, _, @Typed.weak Γ k t τ hk h, hn, i, a, hpos, hus => by
+      cases i with
+      | zero =>
+          have h0 : uses (Typed.weak hk h) 0 = 0 := rfl
+          rw [h0] at hus
+          omega
+      | succ m =>
+          rw [List.get?_succ_cons'] at hpos
+          rcases read_locate n h (by rw [size_weak] at hn; omega) m a hpos
+            (by simpa only [uses, if_neg (Nat.succ_ne_zero m), Nat.add_sub_cancel] using hus) with
+            ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+          · exact Or.inl ⟨E', tp, τp, p, Sub.weak hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+          · exact Or.inl ⟨_, _, _, h, Sub.weakD, Γv, tv, τv, v, hprem, htv, hτv⟩
+          · exact Or.inr (Or.inl ⟨Γ, t, τ, h, Prem.weakP, htv, hτv⟩)
+  | n + 1, _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs, hn, i, a, hpos, hus => by
+      by_cases hlt : i < Γ.length
+      · rcases read_locate n hc (by rw [size_cons] at hn; omega) i a
+          (by rw [← hs, List.get?_append_lt hlt] at hpos; exact hpos)
+          (by simpa only [uses, if_pos hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.consH hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, hc, Sub.consHD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Γ, hd, Ty.content, hc, Prem.consHP, htv, hτv⟩)
+      · have hge : Γ.length ≤ i := Nat.not_lt.mp hlt
+        rcases read_locate n ht (by rw [size_cons] at hn; omega) (i - Γ.length) a
+          (by rw [← hs, List.get?_append_ge hge] at hpos; exact hpos)
+          (by simpa only [uses, if_neg hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.consT hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, ht, Sub.consTD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Δ, tl, Ty.later Ty.stream, ht, Prem.consTP, htv, hτv⟩)
+  | n + 1, _, _, _, @Typed.snoc E Γ Δ t u ht hu hs, hn, i, a, hpos, hus => by
+      by_cases hlt : i < Γ.length
+      · rcases read_locate n ht (by rw [size_snoc] at hn; omega) i a
+          (by rw [← hs, List.get?_append_lt hlt] at hpos; exact hpos)
+          (by simpa only [uses, if_pos hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.snocT hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, ht, Sub.snocTD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Γ, t, Ty.trace, ht, Prem.snocTP, htv, hτv⟩)
+      · have hge : Γ.length ≤ i := Nat.not_lt.mp hlt
+        rcases read_locate n hu (by rw [size_snoc] at hn; omega) (i - Γ.length) a
+          (by rw [← hs, List.get?_append_ge hge] at hpos; exact hpos)
+          (by simpa only [uses, if_neg hlt] using hus) with
+          ⟨E', tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ | ⟨_, htv, hτv, _⟩
+        · exact Or.inl ⟨E', tp, τp, p, Sub.snocU hsub, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inl ⟨_, _, _, hu, Sub.snocUD, Γv, tv, τv, v, hprem, htv, hτv⟩
+        · exact Or.inr (Or.inl ⟨Δ, u, Ty.content, hu, Prem.snocUP, htv, hτv⟩)
+  | n + 1, _, _, _, Typed.unit, _, _, _, _, hus => by
+      simp only [uses] at hus; omega
+  | n + 1, _, _, _, Typed.nil, _, _, _, _, hus => by
+      simp only [uses] at hus; omega
+  | n + 1, _, _, _, Typed.gen, _, _, _, _, hus => by
+      simp only [uses] at hus; omega
+  | n + 1, _, _, _, Typed.red, _, _, _, _, hus => by
+      simp only [uses] at hus; omega
+  | n + 1, _, _, _, Typed.obj, _, _, _, _, hus => by
+      simp only [uses] at hus; omega
+  | n + 1, _, _, _, Typed.terminate, _, _, _, _, hus => by
+      simp only [uses] at hus; omega
 
 end Dcare

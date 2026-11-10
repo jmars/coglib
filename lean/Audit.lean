@@ -98,3 +98,4 @@ Rules:
 #print axioms Dcare.sinks_extract'
 #print axioms Dcare.wSpendFrom_nonpos_all
 #print axioms Dcare.lam_no_producer
+#print axioms Dcare.read_locate
