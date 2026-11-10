@@ -2508,4 +2508,94 @@ theorem mintCount_zero_at_unit_root {t : Term} (h : Typed [Ty.content] t Ty.unit
   have e2 := tMint_zero_at_unit_root h
   omega
 
+/-! ## The park-free fragment and the obligation discipline -/
+
+/-- The DISCIPLINE PREDICATE: a hypothesis (or λ-domain) is the token's
+kind (content), inert, or GAP-CLASS — live but carrying no demand and
+consuming nothing. Contexts satisfying it at every position are the
+march's obligation contexts; `ParkFree` requires it of every λ-domain
+and lete-component in the tree. -/
+def DomOK (a : Ty) : Prop := binderOK a = true ∨ D2 a
+
+/-- The discipline at every position of the context. -/
+def OblCtx (Γ : List Ty) : Prop :=
+  ∀ (i : Nat) (b : Ty), Γ[i]? = some b → DomOK b
+
+/-- PARK-FREE: every λ-domain and lete-component in the tree is
+`DomOK` — no domain CONSUMES tokens, none needs a knower, stream, trace,
+or content, unless it is the token's own kind. This is the obs-44 fix
+generalized: the statement-shaped bodies a march must never enter live
+behind non-DomOK domains, and `ParkFree` bans the doorway. Strictly
+weaker than `liveBind = 0` (which forces every domain binderOK):
+park-free trees may bind GAP-CLASS domains. -/
+def ParkFree : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop
+  | _, _, _, @Typed.lam _ a _ _ h => DomOK a ∧ ParkFree h
+  | _, _, _, @Typed.lete _ _ _ a b _ _ _ ht hb _ =>
+      DomOK a ∧ DomOK b ∧ ParkFree ht ∧ ParkFree hb
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _ => ParkFree hf ∧ ParkFree ha
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _ => ParkFree hl ∧ ParkFree hr
+  | _, _, _, @Typed.next _ _ _ h => ParkFree h
+  | _, _, _, @Typed.fix _ _ _ _ h => ParkFree h
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht _ => ParkFree hc ∧ ParkFree ht
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _ => ParkFree ht ∧ ParkFree hu
+  | _, _, _, @Typed.contr _ _ _ _ _ h => ParkFree h
+  | _, _, _, @Typed.weak _ _ _ _ _ h => ParkFree h
+  | _, _, _, _ => True
+
+theorem ParkFree_lam_inv {Γ : List Ty} {a b : Ty} {body : Term}
+    (h : Typed (a :: Γ) body b) (hp : ParkFree (Typed.lam h)) :
+    DomOK a ∧ ParkFree h := hp
+
+theorem ParkFree_lete_inv {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+    {ht : Typed Γ₁ t (.tensor a b)}
+    {hb : Typed (b :: a :: Γ₂) body c} (hs : Γ₁ ++ Γ₂ = E)
+    (hp : ParkFree (Typed.lete ht hb hs)) :
+    DomOK a ∧ DomOK b ∧ ParkFree ht ∧ ParkFree hb := hp
+
+theorem ParkFree_appL {E : List Ty} {Γ Δ : List Ty} {X b : Ty} {fn arg : Term}
+    {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X} {hs : Γ ++ Δ = E}
+    (hp : ParkFree (Typed.app hf ha hs)) : ParkFree hf := hp.1
+
+theorem ParkFree_appR {E : List Ty} {Γ Δ : List Ty} {X b : Ty} {fn arg : Term}
+    {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X} {hs : Γ ++ Δ = E}
+    (hp : ParkFree (Typed.app hf ha hs)) : ParkFree ha := hp.2
+
+theorem ParkFree_pairL {E : List Ty} {Γ Δ : List Ty} {a b : Ty} {l r : Term}
+    {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E}
+    (hp : ParkFree (Typed.pair hl hr hs)) : ParkFree hl := hp.1
+
+theorem ParkFree_pairR {E : List Ty} {Γ Δ : List Ty} {a b : Ty} {l r : Term}
+    {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E}
+    (hp : ParkFree (Typed.pair hl hr hs)) : ParkFree hr := hp.2
+
+theorem OblCtx_split {E : List Ty} (hd : OblCtx E) {Γ Δ : List Ty}
+    (hs : Γ ++ Δ = E) : OblCtx Γ ∧ OblCtx Δ := by
+  constructor
+  · intro (i : Nat) (b : Ty) hpos
+    have hlt : i < Γ.length := List.get?_some_lt hpos
+    exact hd i b (by rw [← hs, List.get?_append_lt hlt]; exact hpos)
+  · intro (i : Nat) (b : Ty) hpos
+    have hlt : i < Δ.length := List.get?_some_lt hpos
+    refine hd (Γ.length + i) b ?_
+    rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length i), Nat.add_sub_cancel_left]
+    exact hpos
+
+/-- Obligation hypotheses carry no knower/stream/trace demands (the
+token's kind and inert types carry none; gap-class types carry none by
+definition). -/
+theorem DomOK_notNeedsK {b : Ty} (hd : DomOK b) (h : NeedsK b) : False := by
+  rcases hd with hd | hd
+  · exact binderOK_notNeedsK hd h
+  · exact hd.2.2.2.2.1 h
+
+theorem DomOK_notNeedsS {b : Ty} (hd : DomOK b) (h : NeedsS b) : False := by
+  rcases hd with hd | hd
+  · exact binderOK_notNeedsS hd h
+  · exact hd.2.2.2.2.2.1 h
+
+theorem DomOK_notNeedsT {b : Ty} (hd : DomOK b) (h : NeedsT b) : False := by
+  rcases hd with hd | hd
+  · exact binderOK_notNeedsT hd h
+  · exact hd.2.2.2.2.2.2 h
+
 end Dcare
