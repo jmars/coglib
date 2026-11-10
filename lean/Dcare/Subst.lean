@@ -142,6 +142,76 @@ theorem mergeAt_tsize : ∀ (d : Nat) (t : Term), tsize (Term.mergeAt d t) = tsi
   | obj => rfl
   | terminate => rfl
 
+/-- Right-inverse of the contraction renaming: keep indices `≤ d`, shift
+indices `> d` up by one. `mergeAt d (unmergeAt d t) = t` at every depth —
+the `contr`-frame rebuild of the one-hole splice (the premise's reduct
+term is always in `mergeAt`'s image, whatever the inner recursion
+produced: the inverse renames it back to the small-context side). -/
+def Term.unmergeAt (d : Nat) : Term → Term
+  | .var i => if d < i then .var (i + 1) else .var i
+  | .lam a b => .lam a (unmergeAt (d + 1) b)
+  | .app f x => .app (unmergeAt d f) (unmergeAt d x)
+  | .pair l r => .pair (unmergeAt d l) (unmergeAt d r)
+  | .lete t b => .lete (unmergeAt d t) (unmergeAt (d + 2) b)
+  | .unit => .unit
+  | .next t => .next (unmergeAt d t)
+  | .fix t => .fix (unmergeAt d t)
+  | .cons h t => .cons (unmergeAt d h) (unmergeAt d t)
+  | .nil => .nil
+  | .snoc t u => .snoc (unmergeAt d t) (unmergeAt d u)
+  | .gen => .gen
+  | .red => .red
+  | .obj => .obj
+  | .terminate => .terminate
+
+theorem mergeAt_unmergeAt : ∀ (d : Nat) (t : Term),
+    Term.mergeAt d (Term.unmergeAt d t) = t := by
+  intro d t
+  induction t generalizing d with
+  | var i =>
+      simp only [Term.unmergeAt]
+      by_cases h1 : d < i
+      · rw [if_pos h1]
+        simp only [Term.mergeAt]
+        rw [if_neg (by omega : ¬ (i + 1 = d + 1)), if_pos (by omega : d + 1 < i + 1)]
+        simp
+      · rw [if_neg h1]
+        simp only [Term.mergeAt]
+        rw [if_neg (by omega : ¬ (i = d + 1)), if_neg (by omega : ¬ (d + 1 < i))]
+  | lam a b ih => simp only [Term.unmergeAt, Term.mergeAt, ih (d + 1)]
+  | app f x ihf ihx => simp only [Term.unmergeAt, Term.mergeAt, ihf d, ihx d]
+  | pair l r ihl ihr => simp only [Term.unmergeAt, Term.mergeAt, ihl d, ihr d]
+  | lete t b iht ihb => simp only [Term.unmergeAt, Term.mergeAt, iht d, ihb (d + 2)]
+  | unit => rfl
+  | next t ih => simp only [Term.unmergeAt, Term.mergeAt, ih d]
+  | fix t ih => simp only [Term.unmergeAt, Term.mergeAt, ih d]
+  | cons h t ihh iht => simp only [Term.unmergeAt, Term.mergeAt, ihh d, iht d]
+  | nil => rfl
+  | snoc t u iht ihu => simp only [Term.unmergeAt, Term.mergeAt, iht d, ihu d]
+  | gen => rfl
+  | red => rfl
+  | obj => rfl
+  | terminate => rfl
+
+theorem unmergeAt_tsize : ∀ (d : Nat) (t : Term), tsize (Term.unmergeAt d t) = tsize t := by
+  intro d t
+  induction t generalizing d with
+  | var i => simp only [Term.unmergeAt]; split <;> simp [tsize]
+  | lam a b ih => simp only [Term.unmergeAt, tsize, ih (d + 1)]
+  | app f x ihf ihx => simp only [Term.unmergeAt, tsize, ihf d, ihx d]
+  | pair l r ihl ihr => simp only [Term.unmergeAt, tsize, ihl d, ihr d]
+  | lete t b iht ihb => simp only [Term.unmergeAt, tsize, iht d, ihb (d + 2)]
+  | unit => rfl
+  | next t ih => simp only [Term.unmergeAt, tsize, ih d]
+  | fix t ih => simp only [Term.unmergeAt, tsize, ih d]
+  | cons h t ihh iht => simp only [Term.unmergeAt, tsize, ihh d, iht d]
+  | nil => rfl
+  | snoc t u iht ihu => simp only [Term.unmergeAt, tsize, iht d, ihu d]
+  | gen => rfl
+  | red => rfl
+  | obj => rfl
+  | terminate => rfl
+
 /-- THE SUBSTITUTION SIZE LAW: substitution replaces each occurrence of
 the substituted variable (size 1) by a copy of `arg`, so the size moves
 by `occCount * (size arg - 1)`. Integer-valued to avoid truncation; the

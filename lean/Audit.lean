@@ -117,3 +117,8 @@ Rules:
 #print axioms Dcare.stream_origin
 #print axioms Dcare.nonlinear_snet
 #print axioms Dcare.binder_sexact
+#print axioms Dcare.mergeAt_unmergeAt
+#print axioms Dcare.unmergeAt_tsize
+#print axioms Dcare.term_transport
+#print axioms Dcare.linear_cut
+#print axioms Dcare.linear_beta_splice
