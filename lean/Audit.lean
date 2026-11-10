@@ -96,3 +96,5 @@ Rules:
 #print axioms Dcare.trace_origin
 #print axioms Dcare.origin_lemma
 #print axioms Dcare.sinks_extract'
+#print axioms Dcare.wSpendFrom_nonpos_all
+#print axioms Dcare.lam_no_producer

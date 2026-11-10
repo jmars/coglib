@@ -3622,4 +3622,41 @@ theorem Prem_clean : ∀ {E tc τc} {c : Typed E tc τc} {Γ t τ} {v : Typed Γ
       simp only [fixCount, mintCount] at *
       exact ⟨hfc, hmc⟩
 
+/-- Σ-to-≤ : a weighted spend over a context of entirely non-positive
+weights is non-positive (the sibling of `wSpendFrom_nonpos`). -/
+theorem wSpendFrom_nonpos_all :
+    ∀ (base : Nat) (Γ : List Ty) (u : Nat → Nat),
+    (∀ (i : Nat) (a : Ty), Γ[i]? = some a → tnet a ≤ 0) →
+    wSpendFrom tnet base Γ u ≤ 0
+  | _, [], _, _ => by simp only [wSpendFrom]; omega
+  | base, a :: Γ', u, hcon => by
+      have hhead : (u base : Int) * tnet a ≤ 0 := by
+        have hle := hcon 0 a (List.get?_zero_cons')
+        exact Int.mul_nonpos_of_nonneg_of_nonpos (Int.natCast_nonneg _) hle
+      have htail := wSpendFrom_nonpos_all (base + 1) Γ' u (fun (i : Nat) (a' : Ty) hpos => by
+        exact hcon (i + 1) a' (by simpa only [List.get?_succ_cons'] using hpos))
+      simp only [wSpendFrom]
+      omega
+
+/-- NO λ-PRODUCER over a non-positive context (the λ-bottom seed of the
+producer lemma): a clean λ's body cannot conclude a tnet-positive type
+when every context position (its own domain included) is non-positive —
+`tFlowEq` books the impossible budget. The domain-sign condition of the
+original corner is unnecessary: linearity plays no role, only the
+weights. -/
+theorem lam_no_producer {Γ : List Ty} {c σ : Ty} {body : Term}
+    (h : Typed (c :: Γ) body σ)
+    (hfc : fixCount h = 0) (hmc : mintCount h = 0)
+    (hnp : ∀ (j : Nat) (b : Ty), (c :: Γ)[j]? = some b → tnet b ≤ 0)
+    (hσ : 0 < tnet σ) : False := by
+  have htm : tMint h = 0 := by
+    rw [tMint_eq_mintCount_nofix h hfc, hmc]
+    omega
+  have he := tFlowEq h
+  rw [htm, Int.add_zero] at he
+  have hle : tSpend h ≤ 0 := by
+    simp only [tSpend]
+    exact wSpendFrom_nonpos_all 0 (c :: Γ) (uses h) hnp
+  omega
+
 end Dcare
