@@ -83,3 +83,5 @@ Rules:
 #print axioms Dcare.mintCount_zero_at_unit_root
 #print axioms Dcare.extract_produce'
 #print axioms Dcare.no_trace_at_oblig
+#print axioms Dcare.deepConsume_notDomOK
+#print axioms Dcare.no_deep_consumer

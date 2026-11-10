@@ -1562,6 +1562,71 @@ theorem tokenThrough_notallInert : ∀ τ : Ty, TokenThrough τ → allInert τ 
         · simp [allInert, hasTokenDomain_notallInert _ h]
       · simp [allInert, ihb h]
 
+/-- DEEP-CONSUME: the TRANSITIVE CLOSURE of token consumption — some
+domain in the spine, AT ANY DEPTH (domains of domains included), is,
+carries, or consumes the token. `TokenThrough` recurses transitively
+through codomains but only ONE level into domains; `DeepConsume` closes
+the lattice (obs 50: a two-level consumer — `arrow (arrow content unit)
+unit` — is `TokenThrough`-true and `HasTokenDomain`-false; only the
+closure sees it). -/
+def DeepConsume : Ty → Prop
+  | .arrow a σ => (a = Ty.content ∨ NeedsC a ∨ DeepConsume a) ∨ DeepConsume σ
+  | _ => False
+
+theorem deepConsume_notallInert : ∀ τ : Ty, DeepConsume τ → allInert τ = false := by
+  intro τ
+  induction τ with
+  | content | knower | knowledge | value | stream | trace | unit => intro h; exact h.elim
+  | later a' _ => intro h; exact h.elim
+  | tensor a' b' _ _ => intro h; exact h.elim
+  | arrow a' b' iha ihb =>
+      intro h
+      rcases h with h | h
+      · rcases h with rfl | h | h
+        · simp [allInert]
+        · simp [allInert, needsC_notallInert _ h]
+        · simp [allInert, iha h]
+      · simp [allInert, ihb h]
+
+theorem hasTokenDomain_deepConsume : ∀ τ : Ty, HasTokenDomain τ → DeepConsume τ := by
+  intro τ
+  induction τ with
+  | content | knower | knowledge | value | stream | trace | unit | later _ | tensor _ _ =>
+      intro h; exact h.elim
+  | arrow a' b' _ ihb =>
+      intro h
+      rcases h with h | h
+      · rcases h with rfl | h
+        · exact Or.inl (Or.inl rfl)
+        · exact Or.inl (Or.inr (Or.inl h))
+      · exact Or.inr (ihb h)
+
+theorem tokenThrough_deepConsume : ∀ τ : Ty, TokenThrough τ → DeepConsume τ := by
+  intro τ
+  induction τ with
+  | content | knower | knowledge | value | stream | trace | unit | later _ | tensor _ _ =>
+      intro h; exact h.elim
+  | arrow a' b' iha ihb =>
+      intro h
+      rcases h with h | h
+      · rcases h with rfl | h | h
+        · exact Or.inl (Or.inl rfl)
+        · exact Or.inl (Or.inr (Or.inl h))
+        · exact Or.inl (Or.inr (Or.inr (hasTokenDomain_deepConsume _ h)))
+      · exact Or.inr (ihb h)
+
+theorem deepConsume_notbinderOK {τ : Ty} (h : DeepConsume τ) : binderOK τ = false := by
+  have hai := deepConsume_notallInert τ h
+  rcases Bool.eq_false_or_eq_true (binderOK τ) with h1 | h1
+  · exfalso
+    rw [binderOK] at h1
+    rcases Bool.eq_false_or_eq_true (τ == Ty.content) with h2 | h2
+    · exact absurd (eq_of_beq h2) (fun hc => by rw [hc] at h; exact h.elim)
+    · rw [h2, Bool.false_or] at h1
+      rw [hai] at h1
+      exact Bool.noConfusion h1
+  · exact h1
+
 /-! ## Extraction: the type-preserving producer walk -/
 
 /-- EXTRACTION: a fix-free, mint-free, live-binder-free producer of an
@@ -1580,7 +1645,7 @@ contr/weak pass the inner result through (the statement asks nothing
 about the input context). -/
 def extract_produce :
     ∀ (n : Nat), ∀ {Γ : List Ty} {Y σ : Ty} {τ : Ty} {f : Term} (h : Typed Γ f τ),
-    size h ≤ n → τ = .arrow Y σ → TokenThrough (.arrow Y σ) → fixCount h = 0 →
+    size h ≤ n → τ = .arrow Y σ → DeepConsume (.arrow Y σ) → fixCount h = 0 →
     mintCount h = 0 → liveBind h = 0 → CleanCtx Γ →
     ∃ (Γ' : List Ty) (t' : Term) (h' : Typed (Y :: Γ') t' σ),
       size h' ≤ n ∧ CleanCtx (Y :: Γ') ∧ fixCount h' = 0 ∧ mintCount h' = 0 ∧
@@ -1589,7 +1654,7 @@ def extract_produce :
       absurd hn (Nat.not_le_of_lt (size_pos h))
   | n + 1, _, _, _, _, _, Typed.var, _, heq, hdom, _, _, _, hcc => by
       cases heq
-      have hai := tokenThrough_notallInert _ hdom
+      have hai := deepConsume_notallInert _ hdom
       have hbo := hcc 0 _ List.get?_zero_cons'
       rw [binderOK, hai, Bool.or_false] at hbo
       exact Ty.noConfusion (eq_of_beq hbo)
@@ -1680,7 +1745,7 @@ def extract_produce :
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [TokenThrough, HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
       · rcases h with h | h | h
         · exact Ty.noConfusion h
@@ -1691,7 +1756,7 @@ def extract_produce :
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [TokenThrough, HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
       · rcases h with h | h | h
         · exact Ty.noConfusion h
@@ -1702,7 +1767,7 @@ def extract_produce :
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [TokenThrough, HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
       · rcases h with h | h | h
         · exact Ty.noConfusion h
@@ -1713,7 +1778,7 @@ def extract_produce :
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [TokenThrough, HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
       · rcases h with h | h | h
         · exact Ty.noConfusion h
@@ -1809,7 +1874,7 @@ theorem no_trace_at_clean :
             hcc2 hx
         · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
             extract_produce n hf (by rw [size_app] at hsz; omega) rfl
-              (by simp only [TokenThrough]; left; right; left; exact hx) hfc1 hmc1 hlb1 hcc1
+              (by simp only [DeepConsume]; left; right; left; exact hx) hfc1 hmc1 hlb1 hcc1
           exact no_trace_at_clean n h' hs2 hf2 hm2 hl2 hc2 hK
         · obtain ⟨i, b', hpos, hneed⟩ := kprop ha hx
           exact binderOK_notNeedsK (hcc2 i b' hpos) hneed
@@ -1963,8 +2028,8 @@ EXCLUDES: `arrow content content` (the identity type) is NOT gap-class
 (it is a token-consumer), which is why the extract-contradiction row
 handles it and this lemma never has to. -/
 def D2 (τ : Ty) : Prop :=
-  binderOK τ = false ∧ τ ≠ Ty.content ∧ ¬HasTokenDomain τ ∧ ¬NeedsC τ ∧ ¬NeedsK τ ∧
-    ¬NeedsS τ ∧ ¬NeedsT τ
+  binderOK τ = false ∧ τ ≠ Ty.content ∧ ¬DeepConsume τ ∧ ¬HasTokenDomain τ ∧ ¬NeedsC τ ∧
+    ¬NeedsK τ ∧ ¬NeedsS τ ∧ ¬NeedsT τ
 
 /-- Some domain in the arrow-spine is gap-class. -/
 def hasD2Domain : Ty → Prop
@@ -2067,19 +2132,19 @@ theorem no_d2_producer :
   | n + 1, _, _, _, Typed.snoc ht hu hs, _, hdom, _, _, _, _ => hdom.elim
   | n + 1, _, _, _, Typed.gen, _, hdom, _, _, _, _ => by
       rcases hdom with hd | hd
-      · exact hd.2.2.2.2.1 True.intro
+      · exact hd.2.2.2.2.2.1 True.intro
       · exact hd.elim
   | n + 1, _, _, _, Typed.red, _, hdom, _, _, _, _ => by
       rcases hdom with hd | hd
-      · exact hd.2.2.2.2.2.1 True.intro
+      · exact hd.2.2.2.2.2.2.1 True.intro
       · exact hd.elim
   | n + 1, _, _, _, Typed.obj, _, hdom, _, _, _, _ => by
       rcases hdom with hd | hd
-      · exact hd.2.2.2.2.2.1 True.intro
+      · exact hd.2.2.2.2.2.2.1 True.intro
       · exact hd.elim
   | n + 1, _, _, _, Typed.terminate, _, hdom, _, _, _, _ => by
       rcases hdom with hd | hd
-      · exact hd.2.2.2.2.1 True.intro
+      · exact hd.2.2.2.2.2.1 True.intro
       · exact hd.elim
   | n + 1, _, _, _, @Typed.contr Γ k t τ hk h, hsz, hdom, hfc, hmc, hlb, hcc => by
       refine no_d2_producer n h (by rw [size_contr] at hsz; omega) hdom ?_ ?_ ?_ ?_
@@ -2184,13 +2249,13 @@ theorem kill_clean :
         by_cases hx0 : X = Ty.content
         · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
             extract_produce n hf (by rw [size_app] at hsz; omega) rfl
-              (by simp only [TokenThrough]; left; left; exact hx0) hfc1 hmc1 hlb1 hcc1
+              (by simp only [DeepConsume]; left; left; exact hx0) hfc1 hmc1 hlb1 hcc1
           exact kill_clean n h' hs2 hf2 hm2 hl2 hc2
             ⟨0, by rw [List.get?_zero_cons', hx0]⟩ hE
         · by_cases hx1 : NeedsC X
           · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
               extract_produce n hf (by rw [size_app] at hsz; omega) rfl
-                (by simp only [TokenThrough]; left; right; left; exact hx1) hfc1 hmc1 hlb1
+                (by simp only [DeepConsume]; left; right; left; exact hx1) hfc1 hmc1 hlb1
                 hcc1
             have hq : (X == Ty.content) = false := by
               rcases Bool.eq_false_or_eq_true (X == Ty.content) with h1 | h1
@@ -2203,7 +2268,7 @@ theorem kill_clean :
           · by_cases hx2 : HasTokenDomain X
             · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
                 extract_produce n hf (by rw [size_app] at hsz; omega) rfl
-                  (by simp only [TokenThrough]; left; right; right; exact hx2) hfc1 hmc1
+                  (by simp only [DeepConsume]; left; right; right; exact hasTokenDomain_deepConsume _ hx2) hfc1 hmc1
                   hlb1 hcc1
               have hq : (X == Ty.content) = false := by
                 rcases Bool.eq_false_or_eq_true (X == Ty.content) with h1 | h1
@@ -2237,16 +2302,25 @@ theorem kill_clean :
                 · by_cases hx5 : NeedsT X
                   · exact no_trace_at_clean n ha (by rw [size_app] at hsz; omega) hfc2
                       hmc2 hlb2 hcc2 hx5
-                  · rcases Bool.eq_false_or_eq_true (binderOK X) with hbx | hbx
-                    · rcases Bool.eq_false_or_eq_true (X == Ty.content) with h1 | h1
-                      · exact absurd (eq_of_beq h1) hx0
-                      · have hai : allInert X = true := by
-                          rw [binderOK, h1, Bool.false_or] at hbx
-                          exact hbx
-                        exact kill_clean n ha (by rw [size_app] at hsz; omega) hfc2 hmc2
-                          hlb2 hcc2 ⟨i - Γ.length, hpos⟩ (allInert_endsInInert X hai)
-                    · exact no_d2_producer n hf (by rw [size_app] at hsz; omega)
-                        (Or.inl ⟨hbx, hx0, hx2, hx1, hx3, hx4, hx5⟩) hfc1 hmc1 hlb1 hcc1
+                  · by_cases hxDC : DeepConsume X
+                    · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hl2⟩ :=
+                        extract_produce n hf (by rw [size_app] at hsz; omega) rfl
+                          (by simp only [DeepConsume]; left; right; right; exact hxDC)
+                          hfc1 hmc1 hlb1 hcc1
+                      have hbt := hc2 0 _ List.get?_zero_cons'
+                      rw [deepConsume_notbinderOK hxDC] at hbt
+                      exact Bool.noConfusion hbt
+                    · rcases Bool.eq_false_or_eq_true (binderOK X) with hbx | hbx
+                      · rcases Bool.eq_false_or_eq_true (X == Ty.content) with h1 | h1
+                        · exact absurd (eq_of_beq h1) hx0
+                        · have hai : allInert X = true := by
+                            rw [binderOK, h1, Bool.false_or] at hbx
+                            exact hbx
+                          exact kill_clean n ha (by rw [size_app] at hsz; omega) hfc2 hmc2
+                            hlb2 hcc2 ⟨i - Γ.length, hpos⟩ (allInert_endsInInert X hai)
+                      · exact no_d2_producer n hf (by rw [size_app] at hsz; omega)
+                          (Or.inl ⟨hbx, hx0, hxDC, hx2, hx1, hx3, hx4, hx5⟩) hfc1 hmc1
+                          hlb1 hcc1
   | n + 1, _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hsz, hfc, hmc, hlb, hcc,
       htok, hE => by
       obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
@@ -2517,6 +2591,17 @@ march's obligation contexts; `ParkFree` requires it of every λ-domain
 and lete-component in the tree. -/
 def DomOK (a : Ty) : Prop := binderOK a = true ∨ D2 a
 
+/-- The (i)-fix's key lemma (obs 49/50): a deep-consuming type is not
+discipline-OK — neither clean (allInert fails) nor gap-class (the
+¬DeepConsume conjunct fails). Consumer-of-consumer chains at every
+depth die at the discipline. -/
+theorem deepConsume_notDomOK {τ : Ty} (h : DeepConsume τ) (hd : DomOK τ) : False := by
+  rcases hd with hb | hb
+  · have hnb := deepConsume_notbinderOK h
+    rw [hnb] at hb
+    exact Bool.noConfusion hb
+  · exact hb.2.2.1 h
+
 /-- The discipline at every position of the context. -/
 def OblCtx (Γ : List Ty) : Prop :=
   ∀ (i : Nat) (b : Ty), Γ[i]? = some b → DomOK b
@@ -2586,17 +2671,17 @@ definition). -/
 theorem DomOK_notNeedsK {b : Ty} (hd : DomOK b) (h : NeedsK b) : False := by
   rcases hd with hd | hd
   · exact binderOK_notNeedsK hd h
-  · exact hd.2.2.2.2.1 h
+  · exact hd.2.2.2.2.2.1 h
 
 theorem DomOK_notNeedsS {b : Ty} (hd : DomOK b) (h : NeedsS b) : False := by
   rcases hd with hd | hd
   · exact binderOK_notNeedsS hd h
-  · exact hd.2.2.2.2.2.1 h
+  · exact hd.2.2.2.2.2.2.1 h
 
 theorem DomOK_notNeedsT {b : Ty} (hd : DomOK b) (h : NeedsT b) : False := by
   rcases hd with hd | hd
   · exact binderOK_notNeedsT hd h
-  · exact hd.2.2.2.2.2.2 h
+  · exact hd.2.2.2.2.2.2.2 h
 
 /-- EXTRACTION, obligation version: the type-preserving producer walk at
 discipline contexts in park-free trees. The substitution-copy of
@@ -2607,7 +2692,7 @@ DIRECT-consumer trigger — whose var/constants kills are trigger-internal
 and carry over unchanged. -/
 theorem extract_produce' :
     ∀ (n : Nat), ∀ {Γ : List Ty} {Y σ τ : Ty} {f : Term} (h : Typed Γ f τ),
-    size h ≤ n → τ = .arrow Y σ → HasTokenDomain (.arrow Y σ) → fixCount h = 0 →
+    size h ≤ n → τ = .arrow Y σ → DeepConsume (.arrow Y σ) → fixCount h = 0 →
     mintCount h = 0 → ParkFree h → OblCtx Γ →
     ∃ (Γ' : List Ty) (t' : Term) (h' : Typed (Y :: Γ') t' σ),
       size h' ≤ n ∧ OblCtx (Y :: Γ') ∧ fixCount h' = 0 ∧ mintCount h' = 0 ∧
@@ -2617,7 +2702,7 @@ theorem extract_produce' :
   | n + 1, _, _, _, _, _, Typed.var, _, heq, hdom, _, _, _, hcc => by
       cases heq
       rcases hcc 0 _ List.get?_zero_cons' with hb | hb
-      · have hai := hasTokenDomain_notallInert _ hdom
+      · have hai := deepConsume_notallInert _ hdom
         rw [binderOK, hai, Bool.or_false] at hb
         exact Ty.noConfusion (eq_of_beq hb)
       · exact (hb.2.2.1 hdom).elim
@@ -2707,40 +2792,44 @@ theorem extract_produce' :
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
-      · rcases h with h | h
+      · rcases h with h | h | h
         · exact Ty.noConfusion h
+        · exact h.elim
         · exact h.elim
       · exact h.elim
   | n + 1, _, _, _, _, _, Typed.red, _, heq, hdom, _, _, _, _ => by
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
-      · rcases h with h | h
+      · rcases h with h | h | h
         · exact Ty.noConfusion h
+        · exact h.elim
         · exact h.elim
       · exact h.elim
   | n + 1, _, _, _, _, _, Typed.obj, _, heq, hdom, _, _, _, _ => by
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
-      · rcases h with h | h
+      · rcases h with h | h | h
         · exact Ty.noConfusion h
+        · exact h.elim
         · exact h.elim
       · exact h.elim
   | n + 1, _, _, _, _, _, Typed.terminate, _, heq, hdom, _, _, _, _ => by
       injection heq with h1 h2
       subst h1
       subst h2
-      simp only [HasTokenDomain] at hdom
+      simp only [DeepConsume] at hdom
       rcases hdom with h | h
-      · rcases h with h | h
+      · rcases h with h | h | h
         · exact Ty.noConfusion h
+        · exact h.elim
         · exact h.elim
       · exact h.elim
   | n + 1, _, _, _, _, _, @Typed.contr Γ k t τ hk h, hsz, heq, hdom, hfc, hmc,
@@ -2828,7 +2917,7 @@ theorem no_trace_at_oblig :
             hcc2 hx
         · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hp2'⟩ :=
             extract_produce' n hf (by rw [size_app] at hsz; omega) rfl
-              (Or.inl (Or.inr hx)) hfc1 hmc1 hp1 hcc1
+              (Or.inl (Or.inr (Or.inl hx))) hfc1 hmc1 hp1 hcc1
           exact no_trace_at_oblig n h' hs2 hf2 hm2 hp2' hc2 hK
         · obtain ⟨i, b', hpos, hneed⟩ := kprop ha hx
           exact DomOK_notNeedsK (hcc2 i b' hpos) hneed
@@ -2928,5 +3017,21 @@ theorem no_trace_at_oblig :
       exact no_trace_at_oblig n h (by rw [size_weak] at hsz; omega)
         (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
         (by simpa only [ParkFree] using hp) hccp hK
+
+/-- NO DEEP CONSUMER: at discipline contexts in park-free trees, no
+producer consumes a deep-consuming argument — the extraction's concluded
+discipline puts `DomOK X` at the produce-binder, and `DeepConsume X`
+kills both of its branches. Consumer-of-consumer chains at EVERY depth
+die here; the content-domain fire-head (the legal `λ(c:content)` chain)
+is outside this lemma by the `DeepConsume X`-at-`X ≠ content` shape of
+its calling rows. -/
+theorem no_deep_consumer {Γ : List Ty} {X b : Ty} {f : Term}
+    (hf : Typed Γ f (.arrow X b)) (hdc : DeepConsume X)
+    (hfc : fixCount hf = 0) (hmc : mintCount hf = 0) (hp : ParkFree hf)
+    (hcc : OblCtx Γ) : False := by
+  obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hp2⟩ :=
+    extract_produce' (size hf) hf (Nat.le_refl _) rfl
+      (Or.inl (Or.inr (Or.inr hdc))) hfc hmc hp hcc
+  exact deepConsume_notDomOK hdc (hc2 0 _ List.get?_zero_cons')
 
 end Dcare
