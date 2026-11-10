@@ -2598,4 +2598,335 @@ theorem DomOK_notNeedsT {b : Ty} (hd : DomOK b) (h : NeedsT b) : False := by
   · exact binderOK_notNeedsT hd h
   · exact hd.2.2.2.2.2.2 h
 
+/-- EXTRACTION, obligation version: the type-preserving producer walk at
+discipline contexts in park-free trees. The substitution-copy of
+`extract_produce` — `liveBind` becomes `ParkFree` (the lam/lete cases
+return the DOMOK of the domain directly, no inversion lemma needed) and
+`CleanCtx` becomes `OblCtx`. The trigger stays `HasTokenDomain` — the
+DIRECT-consumer trigger — whose var/constants kills are trigger-internal
+and carry over unchanged. -/
+theorem extract_produce' :
+    ∀ (n : Nat), ∀ {Γ : List Ty} {Y σ τ : Ty} {f : Term} (h : Typed Γ f τ),
+    size h ≤ n → τ = .arrow Y σ → HasTokenDomain (.arrow Y σ) → fixCount h = 0 →
+    mintCount h = 0 → ParkFree h → OblCtx Γ →
+    ∃ (Γ' : List Ty) (t' : Term) (h' : Typed (Y :: Γ') t' σ),
+      size h' ≤ n ∧ OblCtx (Y :: Γ') ∧ fixCount h' = 0 ∧ mintCount h' = 0 ∧
+      ParkFree h'
+  | 0, _, _, _, _, _, h, hn, _, _, _, _, _, _ =>
+      absurd hn (Nat.not_le_of_lt (size_pos h))
+  | n + 1, _, _, _, _, _, Typed.var, _, heq, hdom, _, _, _, hcc => by
+      cases heq
+      rcases hcc 0 _ List.get?_zero_cons' with hb | hb
+      · have hai := hasTokenDomain_notallInert _ hdom
+        rw [binderOK, hai, Bool.or_false] at hb
+        exact Ty.noConfusion (eq_of_beq hb)
+      · exact (hb.2.2.1 hdom).elim
+  | n + 1, _, _, _, _, _, @Typed.lam Γ a b body h, hsz, heq, hdom, hfc, hmc,
+      hp, hcc => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      obtain ⟨hdy, hpf⟩ := ParkFree_lam_inv h hp
+      refine ⟨Γ, body, h, ?_, ?_, ?_, ?_, hpf⟩
+      · rw [size_lam] at hsz; omega
+      · intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hdy
+        | succ m =>
+            rw [List.get?_succ_cons'] at hpos
+            exact hcc m b' hpos
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+  | n + 1, _, _, _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hsz, heq, hdom,
+      hfc, hmc, hp, hcc => by
+      subst heq
+      obtain ⟨hfc1, _⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hp1, _⟩ := hp
+      obtain ⟨hcc1, _⟩ := OblCtx_split hcc hs
+      have hszf : size hf ≤ n := by rw [size_app] at hsz; omega
+      obtain ⟨Γ₁, t₁, h₁, hs1, hc1, hf1, hm1, hp1'⟩ :=
+        extract_produce' n hf hszf rfl (Or.inr hdom) hfc1 hmc1 hp1 hcc1
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hp2⟩ :=
+        extract_produce' n h₁ hs1 rfl hdom hf1 hm1 hp1' hc1
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hp2⟩
+  | n + 1, _, _, _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, _, heq, _, _, _,
+      _, _ => by
+      exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hsz, heq,
+      hdom, hfc, hmc, hp, hcc => by
+      subst heq
+      obtain ⟨hda, hdb, _, hpb⟩ := ParkFree_lete_inv hs hp
+      obtain ⟨_, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨_, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨_, hcc2⟩ := OblCtx_split hcc hs
+      have hszb : size hb ≤ n := by rw [size_lete] at hsz; omega
+      have hccb : OblCtx (b :: a :: Γ₂) := by
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hdb
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hda
+            | succ k =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc2 k b' hpos
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hp2⟩ :=
+        extract_produce' n hb hszb rfl hdom hfc2 hmc2 hpb hccb
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hp2⟩
+  | n + 1, _, _, _, _, _, Typed.unit, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, @Typed.next Γ a t h, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, @Typed.fix _ a body hΓ h, _, heq, hdom, hfc, _, _, _ => by
+      cases heq
+      exact absurd hfc (by simp only [fixCount]; omega)
+  | n + 1, _, _, _, _, _, Typed.cons hc ht hs, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, Typed.nil, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, Typed.snoc ht hu hs, _, heq, _, _, _, _, _ =>
+      by exact Ty.noConfusion heq
+  | n + 1, _, _, _, _, _, Typed.gen, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, Typed.red, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, Typed.obj, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, Typed.terminate, _, heq, hdom, _, _, _, _ => by
+      injection heq with h1 h2
+      subst h1
+      subst h2
+      simp only [HasTokenDomain] at hdom
+      rcases hdom with h | h
+      · rcases h with h | h
+        · exact Ty.noConfusion h
+        · exact h.elim
+      · exact h.elim
+  | n + 1, _, _, _, _, _, @Typed.contr Γ k t τ hk h, hsz, heq, hdom, hfc, hmc,
+      hp, hcc => by
+      subst heq
+      have hccp : OblCtx (k :: k :: Γ) := by
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hcc 0 _ List.get?_zero_cons'
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hcc 0 _ List.get?_zero_cons'
+            | succ m' =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc (m' + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hp2⟩ :=
+        extract_produce' n h (by rw [size_contr] at hsz; omega) rfl hdom
+          (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+          (by simpa only [ParkFree] using hp) hccp
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hp2⟩
+  | n + 1, _, _, _, _, _, @Typed.weak Γ k t τ hk h, hsz, heq, hdom, hfc, hmc,
+      hp, hcc => by
+      subst heq
+      have hccp : OblCtx Γ := by
+        intro (i : Nat) (b' : Ty) hpos
+        exact hcc (i + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hp2⟩ :=
+        extract_produce' n h (by rw [size_weak] at hsz; omega) rfl hdom
+          (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+          (by simpa only [ParkFree] using hp) hccp
+      exact ⟨Γ', t', h', by omega, hc2, hf2, hm2, hp2⟩
+
+/-- NO TRACE AT OBLIGATIONS: the no-archival theorem at discipline
+contexts in park-free trees — `no_trace_at_clean` with `ParkFree` for
+`liveBind` and `OblCtx` for `CleanCtx`. Every trace-spine still bottoms
+at a banned domain (non-DomOK), a banned hypothesis, a mint, or a
+fixpoint. -/
+theorem no_trace_at_oblig :
+    ∀ (n : Nat), ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ),
+    size h ≤ n → fixCount h = 0 → mintCount h = 0 → ParkFree h →
+    OblCtx Γ → NeedsT τ → False
+  | 0, _, _, _, h, hn, _, _, _, _, _ => absurd hn (Nat.not_le_of_lt (size_pos h))
+  | n + 1, _, _, _, Typed.var, _, _, _, _, hcc, hK =>
+      DomOK_notNeedsT (hcc 0 _ List.get?_zero_cons') hK
+  | n + 1, _, _, _, @Typed.lam Γ a b body h, hsz, hfc, hmc, hp, hcc,
+      ⟨hb, hneg⟩ => by
+      obtain ⟨hda, hpf⟩ := ParkFree_lam_inv h hp
+      refine no_trace_at_oblig n h (by rw [size_lam] at hsz; omega) ?_ ?_ hpf ?_ hb
+      · simpa only [fixCount] using hfc
+      · simpa only [mintCount] using hmc
+      · intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hda
+        | succ m =>
+            rw [List.get?_succ_cons'] at hpos
+            exact hcc m b' hpos
+  | n + 1, _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hsz, hfc, hmc, hp,
+      hcc, hK => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hp1, hp2⟩ := hp
+      obtain ⟨hcc1, hcc2⟩ := OblCtx_split hcc hs
+      by_cases hN : NeedsT (Ty.arrow X b)
+      · exact no_trace_at_oblig n hf (by rw [size_app] at hsz; omega) hfc1 hmc1 hp1
+          hcc1 hN
+      · have hdx : NeedsT X ∨ NeedsC X ∨ NeedsK X :=
+          Classical.byContradiction fun hcon =>
+            hN ⟨hK, fun hd => hcon hd⟩
+        rcases hdx with hx | hx | hx
+        · exact no_trace_at_oblig n ha (by rw [size_app] at hsz; omega) hfc2 hmc2 hp2
+            hcc2 hx
+        · obtain ⟨Γ', t', h', hs2, hc2, hf2, hm2, hp2'⟩ :=
+            extract_produce' n hf (by rw [size_app] at hsz; omega) rfl
+              (Or.inl (Or.inr hx)) hfc1 hmc1 hp1 hcc1
+          exact no_trace_at_oblig n h' hs2 hf2 hm2 hp2' hc2 hK
+        · obtain ⟨i, b', hpos, hneed⟩ := kprop ha hx
+          exact DomOK_notNeedsK (hcc2 i b' hpos) hneed
+  | n + 1, _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hsz, hfc, hmc, hp,
+      hcc, hK => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hl = 0 ∧ mintCount hr = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hp1, hp2⟩ := hp
+      obtain ⟨hcc1, hcc2⟩ := OblCtx_split hcc hs
+      rcases hK with hK | hK
+      · exact no_trace_at_oblig n hl (by rw [size_pair] at hsz; omega) hfc1 hmc1 hp1
+          hcc1 hK
+      · exact no_trace_at_oblig n hr (by rw [size_pair] at hsz; omega) hfc2 hmc2 hp2
+          hcc2 hK
+  | n + 1, _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hsz, hfc, hmc,
+      hp, hcc, hK => by
+      obtain ⟨hda, hdb, hpt, hpb⟩ := ParkFree_lete_inv hs hp
+      obtain ⟨hfc1, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hcc1, hcc2⟩ := OblCtx_split hcc hs
+      by_cases hbs : NeedsT a ∨ NeedsT b
+      · exact no_trace_at_oblig n ht (by rw [size_lete] at hsz; omega) hfc1 hmc1 hpt
+          hcc1 hbs
+      · refine no_trace_at_oblig n hb (by rw [size_lete] at hsz; omega) hfc2 hmc2 hpb
+          ?_ hK
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hdb
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hda
+            | succ k =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc2 k b' hpos
+  | n + 1, _, _, _, Typed.unit, _, _, _, _, _, hK => False.elim hK
+  | n + 1, _, _, _, @Typed.next Γ a t h, hsz, hfc, hmc, hp, hcc, hK =>
+      no_trace_at_oblig n h (by rw [size_next] at hsz; omega) hfc hmc
+        (by simpa only [ParkFree] using hp) hcc hK
+  | n + 1, _, _, _, @Typed.fix _ _ _ _ _, _, hfc, _, _, _, _ =>
+      absurd hfc (by simp only [fixCount]; omega)
+  | n + 1, _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs, _, _, _, _, _, hK =>
+      False.elim hK
+  | n + 1, _, _, _, Typed.nil, _, _, hmc, _, _, _ =>
+      absurd hmc (by simp only [mintCount]; omega)
+  | n + 1, _, _, _, @Typed.snoc E Γ Δ t u ht hu hs, hsz, hfc, hmc, hp, hcc, _ => by
+      obtain ⟨hfc1, _⟩ : fixCount ht = 0 ∧ fixCount hu = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount ht = 0 ∧ mintCount hu = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      obtain ⟨hp1, _⟩ := hp
+      obtain ⟨hcc1, _⟩ := OblCtx_split hcc hs
+      exact no_trace_at_oblig n ht (by rw [size_snoc] at hsz; omega) hfc1 hmc1 hp1
+        hcc1 True.intro
+  | n + 1, _, _, _, Typed.gen, _, _, _, _, _, hK => hK.2 (Or.inr (Or.inr True.intro))
+  | n + 1, _, _, _, Typed.red, _, _, _, _, _, hK => False.elim hK.1
+  | n + 1, _, _, _, Typed.obj, _, _, _, _, _, hK => False.elim hK.1
+  | n + 1, _, _, _, Typed.terminate, _, _, _, _, _, hK =>
+      hK.2 (Or.inr (Or.inr True.intro))
+  | n + 1, _, _, _, @Typed.contr Γ k t τ hk h, hsz, hfc, hmc, hp, hcc, hK => by
+      have hccp : OblCtx (k :: k :: Γ) := by
+        intro (i : Nat) (b' : Ty) hpos
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact hcc 0 _ List.get?_zero_cons'
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                exact hcc 0 _ List.get?_zero_cons'
+            | succ m' =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                exact hcc (m' + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      exact no_trace_at_oblig n h (by rw [size_contr] at hsz; omega)
+        (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+        (by simpa only [ParkFree] using hp) hccp hK
+  | n + 1, _, _, _, @Typed.weak Γ k t τ hk h, hsz, hfc, hmc, hp, hcc, hK => by
+      have hccp : OblCtx Γ := by
+        intro (i : Nat) (b' : Ty) hpos
+        exact hcc (i + 1) b' (by rw [List.get?_succ_cons']; exact hpos)
+      exact no_trace_at_oblig n h (by rw [size_weak] at hsz; omega)
+        (by simpa only [fixCount] using hfc) (by simpa only [mintCount] using hmc)
+        (by simpa only [ParkFree] using hp) hccp hK
+
 end Dcare

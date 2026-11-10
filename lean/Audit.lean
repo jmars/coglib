@@ -81,3 +81,5 @@ Rules:
 #print axioms Dcare.kill_clean
 #print axioms Dcare.no_vanishing_clean
 #print axioms Dcare.mintCount_zero_at_unit_root
+#print axioms Dcare.extract_produce'
+#print axioms Dcare.no_trace_at_oblig
