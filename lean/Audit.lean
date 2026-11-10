@@ -80,3 +80,4 @@ Rules:
 #print axioms Dcare.no_d2_producer
 #print axioms Dcare.kill_clean
 #print axioms Dcare.no_vanishing_clean
+#print axioms Dcare.mintCount_zero_at_unit_root

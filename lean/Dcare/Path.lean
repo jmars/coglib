@@ -2439,4 +2439,73 @@ theorem no_vanishing_clean {t : Term} (h : Typed [Ty.content] t Ty.unit)
     ⟨0, List.get?_zero_cons'⟩
     rfl
 
+/-- In a fix-free tree the trace-mint counters agree — `tMint`'s only
+divergence from `mintCount` is the fix-case's `tnet a` term. -/
+theorem tMint_eq_mintCount_nofix :
+    ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    fixCount h = 0 → tMint h = mintCount h := by
+  intro Γ t τ h
+  induction h with
+  | var | unit | nil | gen | red | obj | terminate => intro _; rfl
+  | lam _ ih =>
+      intro hf
+      simpa only [tMint, mintCount, fixCount] using ih hf
+  | app _ _ _ ihf iha =>
+      intro hf
+      simp only [fixCount, Nat.add_eq_zero_iff] at hf
+      simp only [tMint, mintCount]
+      have e1 := ihf hf.1
+      have e2 := iha hf.2
+      omega
+  | pair _ _ _ ihl ihr =>
+      intro hf
+      simp only [fixCount, Nat.add_eq_zero_iff] at hf
+      simp only [tMint, mintCount]
+      have e1 := ihl hf.1
+      have e2 := ihr hf.2
+      omega
+  | lete _ _ _ iht ihb =>
+      intro hf
+      simp only [fixCount, Nat.add_eq_zero_iff] at hf
+      simp only [tMint, mintCount]
+      have e1 := iht hf.1
+      have e2 := ihb hf.2
+      omega
+  | next _ ih =>
+      intro hf
+      simpa only [tMint, mintCount, fixCount] using ih hf
+  | fix _ _ _ =>
+      intro hf
+      exact absurd hf (by simp only [fixCount]; omega)
+  | cons _ _ _ ihc iht =>
+      intro hf
+      simp only [fixCount, Nat.add_eq_zero_iff] at hf
+      simp only [tMint, mintCount]
+      have e1 := ihc hf.1
+      have e2 := iht hf.2
+      omega
+  | snoc _ _ _ iht ihu =>
+      intro hf
+      simp only [fixCount, Nat.add_eq_zero_iff] at hf
+      simp only [tMint, mintCount]
+      have e1 := iht hf.1
+      have e2 := ihu hf.2
+      omega
+  | contr _ _ ih =>
+      intro hf
+      simpa only [tMint, mintCount, fixCount] using ih hf
+  | weak _ _ ih =>
+      intro hf
+      simpa only [tMint, mintCount, fixCount] using ih hf
+
+/-- The FREE DISCHARGE for the ascent's front door: at a fix-free
+`[content] ⊢ unit` root, the trace-mint count is zero — the root spends
+no trace-tokens and carries none, so `nil`/`terminate` nodes are
+arithmetically excluded before the march begins. -/
+theorem mintCount_zero_at_unit_root {t : Term} (h : Typed [Ty.content] t Ty.unit)
+    (hf : fixCount h = 0) : mintCount h = 0 := by
+  have e1 := tMint_eq_mintCount_nofix h hf
+  have e2 := tMint_zero_at_unit_root h
+  omega
+
 end Dcare
