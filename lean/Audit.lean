@@ -11,6 +11,7 @@ import Dcare.Constructive
 import Dcare.SelfApp
 import Dcare.Path
 import Dcare.Subst
+import Dcare.Cut
 
 /-!
 # Axiom audit (run by scripts/lean-check.sh, NOT part of the library)
@@ -109,6 +110,8 @@ Rules:
 #print axioms Dcare.linear_redex_shrink
 #print axioms Dcare.substP_tsize
 #print axioms Dcare.linear_redex_shrinkP
+#print axioms Dcare.append_cancel_left
+#print axioms Dcare.append_cancel_right
 #print axioms Dcare.sFlowEq
 #print axioms Dcare.sMint_nonpos
 #print axioms Dcare.stream_origin

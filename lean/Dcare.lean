@@ -9,6 +9,7 @@ import Dcare.Flow
 import Dcare.SelfApp
 import Dcare.Path
 import Dcare.Subst
+import Dcare.Cut
 import Dcare.Syntax
 import Dcare.Typing
 import Dcare.Linearity
