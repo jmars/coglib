@@ -3853,4 +3853,55 @@ theorem read_locate : ∀ (n : Nat) {Γ : List Ty} {τ : Ty} {t : Term} (d : Typ
   | n + 1, _, _, _, Typed.terminate, _, _, _, _, hus => by
       simp only [uses] at hus; omega
 
+/-- Sub is transitive: deep-inside composes. Induction on the OUTER
+certificate — every direct base pairs with its wrapping constructor,
+every wrapping case re-wraps the IH. -/
+theorem Sub_trans : ∀ {E₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {a : Typed E₁ t₁ τ₁}
+    {E₂ : List Ty} {t₂ : Term} {τ₂ : Ty} {b : Typed E₂ t₂ τ₂},
+    Sub a b → ∀ {E₃ : List Ty} {t₃ : Term} {τ₃ : Ty} {c : Typed E₃ t₃ τ₃}, Sub b c → Sub a c := by
+  intro E₁ t₁ τ₁ a E₂ t₂ τ₂ b h1
+  induction h1 with
+  | lam s ih => intro _ _ _ _ h2; exact Sub.lam (ih h2)
+  | appL s ih => intro _ _ _ _ h2; exact Sub.appL (ih h2)
+  | appR s ih => intro _ _ _ _ h2; exact Sub.appR (ih h2)
+  | pairL s ih => intro _ _ _ _ h2; exact Sub.pairL (ih h2)
+  | pairR s ih => intro _ _ _ _ h2; exact Sub.pairR (ih h2)
+  | leteT s ih => intro _ _ _ _ h2; exact Sub.leteT (ih h2)
+  | leteB s ih => intro _ _ _ _ h2; exact Sub.leteB (ih h2)
+  | next s ih => intro _ _ _ _ h2; exact Sub.next (ih h2)
+  | fix s ih => intro _ _ _ _ h2; exact Sub.fix (ih h2)
+  | consH s ih => intro _ _ _ _ h2; exact Sub.consH (ih h2)
+  | consT s ih => intro _ _ _ _ h2; exact Sub.consT (ih h2)
+  | snocT s ih => intro _ _ _ _ h2; exact Sub.snocT (ih h2)
+  | snocU s ih => intro _ _ _ _ h2; exact Sub.snocU (ih h2)
+  | contr s ih => intro _ _ _ _ h2; exact Sub.contr (ih h2)
+  | weak s ih => intro _ _ _ _ h2; exact Sub.weak (ih h2)
+  | lamD => intro _ _ _ _ h2; exact Sub.lam h2
+  | appLD => intro _ _ _ _ h2; exact Sub.appL h2
+  | appRD => intro _ _ _ _ h2; exact Sub.appR h2
+  | pairLD => intro _ _ _ _ h2; exact Sub.pairL h2
+  | pairRD => intro _ _ _ _ h2; exact Sub.pairR h2
+  | leteTD => intro _ _ _ _ h2; exact Sub.leteT h2
+  | leteBD => intro _ _ _ _ h2; exact Sub.leteB h2
+  | nextD => intro _ _ _ _ h2; exact Sub.next h2
+  | fixD => intro _ _ _ _ h2; exact Sub.fix h2
+  | consHD => intro _ _ _ _ h2; exact Sub.consH h2
+  | consTD => intro _ _ _ _ h2; exact Sub.consT h2
+  | snocTD => intro _ _ _ _ h2; exact Sub.snocT h2
+  | snocUD => intro _ _ _ _ h2; exact Sub.snocU h2
+  | contrD => intro _ _ _ _ h2; exact Sub.contr h2
+  | weakD => intro _ _ _ _ h2; exact Sub.weak h2
+
+/-- A node INTRODUCES a position of type `a` into its premise's
+context: λ-domains and lete-components. -/
+inductive Introduces : {E : List Ty} → {tp : Term} → {τp : Ty} → Typed E tp τp → Ty → Prop where
+  | lamI {E : List Ty} {σ : Ty} {body : Term} {a : Ty} (hb : Typed (a :: E) body σ) :
+      Introduces (Typed.lam hb) a
+  | leteIY {E Γ₁ Γ₂ : List Ty} {x y c : Ty} {s body : Term}
+      {ht : Typed Γ₁ s (.tensor x y)} {hb : Typed (y :: x :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E} :
+      Introduces (Typed.lete ht hb hs) y
+  | leteIX {E Γ₁ Γ₂ : List Ty} {x y c : Ty} {s body : Term}
+      {ht : Typed Γ₁ s (.tensor x y)} {hb : Typed (y :: x :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E} :
+      Introduces (Typed.lete ht hb hs) x
+
 end Dcare
