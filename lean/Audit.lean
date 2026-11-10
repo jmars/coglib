@@ -104,3 +104,8 @@ Rules:
 #print axioms Dcare.pos_introduced
 #print axioms Dcare.Path_clean
 #print axioms Dcare.parent_locate
+#print axioms Dcare.sFlowEq
+#print axioms Dcare.sMint_nonpos
+#print axioms Dcare.stream_origin
+#print axioms Dcare.nonlinear_snet
+#print axioms Dcare.binder_sexact

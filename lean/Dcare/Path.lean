@@ -3398,88 +3398,6 @@ theorem trace_origin {Γ : List Ty} {t : Term} (h : Typed Γ t Ty.trace)
     ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ tnet b > 0 ∧ uses h i ≥ 1 :=
   origin_lemma h hfc hmc (by simp [tnet])
 
-/-- SINK-EXTRACTION, counters-only (the undisciplined version): in a
-fix-free mint-free tree, a sink node's KILLED premise is itself fix-free
-and mint-free — no discipline is carried (undisciplined contexts are the
-S3 chase's subject; the counters are what descend unconditionally). -/
-theorem sinks_extract' :
-    ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ),
-    0 < sinks h → fixCount h = 0 → mintCount h = 0 →
-    (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' Ty.trace),
-        fixCount ht = 0 ∧ mintCount ht = 0)
-    ∨ (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' (.later Ty.stream)),
-        fixCount ht = 0 ∧ mintCount ht = 0)
-  | _, _, _, @Typed.snoc E Γ Δ t u ht hu hs, _, hfc, hmc => by
-      obtain ⟨hfc1, _⟩ : fixCount ht = 0 ∧ fixCount hu = 0 := by
-        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
-      obtain ⟨hmc1, _⟩ : mintCount ht = 0 ∧ mintCount hu = 0 := by
-        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
-      exact Or.inl ⟨Γ, t, ht, hfc1, hmc1⟩
-  | _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs, _, hfc, hmc => by
-      obtain ⟨_, hfc2⟩ : fixCount hc = 0 ∧ fixCount ht = 0 := by
-        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
-      obtain ⟨_, hmc2⟩ : mintCount hc = 0 ∧ mintCount ht = 0 := by
-        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
-      exact Or.inr ⟨Δ, tl, ht, hfc2, hmc2⟩
-  | _, _, _, @Typed.lam _ _ _ _ h, hsink, hfc, hmc =>
-      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
-        (by simpa only [mintCount] using hmc)
-  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _, hsink, hfc, hmc => by
-      obtain ⟨hfc1, hfc2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
-        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
-      obtain ⟨hmc1, hmc2⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
-        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
-      simp only [sinks] at hsink
-      by_cases hsl : 0 < sinks hf
-      · exact sinks_extract' hf hsl hfc1 hmc1
-      · have hsr : 0 < sinks ha := by omega
-        exact sinks_extract' ha hsr hfc2 hmc2
-  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _, hsink, hfc, hmc => by
-      obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
-        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
-      obtain ⟨hmc1, hmc2⟩ : mintCount hl = 0 ∧ mintCount hr = 0 := by
-        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
-      simp only [sinks] at hsink
-      by_cases hsl : 0 < sinks hl
-      · exact sinks_extract' hl hsl hfc1 hmc1
-      · have hsr : 0 < sinks hr := by omega
-        exact sinks_extract' hr hsr hfc2 hmc2
-  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _, hsink, hfc, hmc => by
-      obtain ⟨hfc1, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
-        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
-      obtain ⟨hmc1, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
-        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
-      simp only [sinks] at hsink
-      by_cases hst : 0 < sinks ht
-      · exact sinks_extract' ht hst hfc1 hmc1
-      · have hsb : 0 < sinks hb := by omega
-        exact sinks_extract' hb hsb hfc2 hmc2
-  | _, _, _, @Typed.next _ _ _ h, hsink, hfc, hmc =>
-      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
-        (by simpa only [mintCount] using hmc)
-  | _, _, _, @Typed.contr _ _ _ _ _ h, hsink, hfc, hmc =>
-      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
-        (by simpa only [mintCount] using hmc)
-  | _, _, _, @Typed.weak _ _ _ _ _ h, hsink, hfc, hmc =>
-      sinks_extract' h hsink (by simpa only [fixCount] using hfc)
-        (by simpa only [mintCount] using hmc)
-  | _, _, _, @Typed.fix _ _ _ _ _, _, hfc, _ =>
-      absurd hfc (by simp only [fixCount]; omega)
-  | _, _, _, Typed.var, hsink, _, _ => by
-      simp only [sinks] at hsink; omega
-  | _, _, _, Typed.unit, hsink, _, _ => by
-      simp only [sinks] at hsink; omega
-  | _, _, _, Typed.nil, hsink, _, _ => by
-      simp only [sinks] at hsink; omega
-  | _, _, _, Typed.gen, hsink, _, _ => by
-      simp only [sinks] at hsink; omega
-  | _, _, _, Typed.red, hsink, _, _ => by
-      simp only [sinks] at hsink; omega
-  | _, _, _, Typed.obj, hsink, _, _ => by
-      simp only [sinks] at hsink; omega
-  | _, _, _, Typed.terminate, hsink, _, _ => by
-      simp only [sinks] at hsink; omega
-
 /-! ## The chase: paths, premises, and the undisciplined kill
 
 The undisciplined chase walks a trace-carrying VALUE to its death. The
@@ -4097,5 +4015,477 @@ theorem parent_locate {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed
   cases hp with
   | here => exact Or.inr ⟨rfl, rfl, rfl⟩
   | step p s => exact Or.inl ⟨_, _, _, _, p, s⟩
+
+/-- SINK-EXTRACTION, counters-only (the undisciplined version): in a
+fix-free mint-free tree, a sink node's KILLED premise is itself fix-free
+and mint-free — no discipline is carried (undisciplined contexts are the
+S3 chase's subject; the counters are what descend unconditionally). The
+containment certificate rides along: the chase enters at the extracted
+premise WITH its `Path` from the root. -/
+theorem sinks_extract' :
+    ∀ {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀),
+    ∀ {Γ : List Ty} {τ : Ty} {t : Term} (h : Typed Γ t τ), Path root h →
+    0 < sinks h → fixCount h = 0 → mintCount h = 0 →
+    (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' Ty.trace),
+        Path root ht ∧ fixCount ht = 0 ∧ mintCount ht = 0)
+    ∨ (∃ (Γ' : List Ty) (t' : Term) (ht : Typed Γ' t' (.later Ty.stream)),
+        Path root ht ∧ fixCount ht = 0 ∧ mintCount ht = 0)
+  | _, _, _, root, _, _, _, @Typed.snoc E Γ Δ t u ht hu hs, hp, _, hfc, hmc => by
+      obtain ⟨hfc1, _⟩ : fixCount ht = 0 ∧ fixCount hu = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, _⟩ : mintCount ht = 0 ∧ mintCount hu = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact Or.inl ⟨Γ, t, ht, Path.step hp Prem.snocTP, hfc1, hmc1⟩
+  | _, _, _, root, _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs, hp, _, hfc, hmc => by
+      obtain ⟨_, hfc2⟩ : fixCount hc = 0 ∧ fixCount ht = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨_, hmc2⟩ : mintCount hc = 0 ∧ mintCount ht = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      exact Or.inr ⟨Δ, tl, ht, Path.step hp Prem.consTP, hfc2, hmc2⟩
+  | _, _, _, root, _, _, _, @Typed.lam _ _ _ _ h, hp, hsink, hfc, hmc =>
+      sinks_extract' root h (Path.step hp Prem.lamP) hsink
+        (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, root, _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _, hp, hsink, hfc, hmc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hf = 0 ∧ fixCount ha = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hf = 0 ∧ mintCount ha = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      simp only [sinks] at hsink
+      by_cases hsl : 0 < sinks hf
+      · exact sinks_extract' root hf (Path.step hp Prem.appFP) hsl hfc1 hmc1
+      · have hsr : 0 < sinks ha := by omega
+        exact sinks_extract' root ha (Path.step hp Prem.appAP) hsr hfc2 hmc2
+  | _, _, _, root, _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _, hp, hsink, hfc, hmc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount hl = 0 ∧ fixCount hr = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount hl = 0 ∧ mintCount hr = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      simp only [sinks] at hsink
+      by_cases hsl : 0 < sinks hl
+      · exact sinks_extract' root hl (Path.step hp Prem.pairLP) hsl hfc1 hmc1
+      · have hsr : 0 < sinks hr := by omega
+        exact sinks_extract' root hr (Path.step hp Prem.pairRP) hsr hfc2 hmc2
+  | _, _, _, root, _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _, hp, hsink, hfc, hmc => by
+      obtain ⟨hfc1, hfc2⟩ : fixCount ht = 0 ∧ fixCount hb = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      obtain ⟨hmc1, hmc2⟩ : mintCount ht = 0 ∧ mintCount hb = 0 := by
+        simpa only [mintCount, Nat.add_eq_zero_iff] using hmc
+      simp only [sinks] at hsink
+      by_cases hst : 0 < sinks ht
+      · exact sinks_extract' root ht (Path.step hp Prem.leteTP) hst hfc1 hmc1
+      · have hsb : 0 < sinks hb := by omega
+        exact sinks_extract' root hb (Path.step hp Prem.leteBP) hsb hfc2 hmc2
+  | _, _, _, root, _, _, _, @Typed.next _ _ _ h, hp, hsink, hfc, hmc =>
+      sinks_extract' root h (Path.step hp Prem.nextP) hsink
+        (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, root, _, _, _, @Typed.contr _ _ _ _ _ h, hp, hsink, hfc, hmc =>
+      sinks_extract' root h (Path.step hp Prem.contrP) hsink
+        (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, root, _, _, _, @Typed.weak _ _ _ _ _ h, hp, hsink, hfc, hmc =>
+      sinks_extract' root h (Path.step hp Prem.weakP) hsink
+        (by simpa only [fixCount] using hfc)
+        (by simpa only [mintCount] using hmc)
+  | _, _, _, _, _, _, _, @Typed.fix _ _ _ _ _, _, _, hfc, _ =>
+      absurd hfc (by simp only [fixCount]; omega)
+  | _, _, _, _, _, _, _, Typed.var, _, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, _, _, _, _, Typed.unit, _, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, _, _, _, _, Typed.nil, _, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, _, _, _, _, Typed.gen, _, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, _, _, _, _, Typed.red, _, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, _, _, _, _, Typed.obj, _, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+  | _, _, _, _, _, _, _, Typed.terminate, _, hsink, _, _ => by
+      simp only [sinks] at hsink; omega
+
+/-! ## The stream account: `snet`, `sFlowEq`, `stream_origin`
+
+The cons-side of the kill needs its own arithmetic: `tnet` counts traces
+only (`tnet stream = 0`), so a `▷stream` conclusion balances nothing
+there. `snet` counts stream-tokens instead. The MINT SIGNATURE differs
+from `tMint` in the load-bearing way: `red` and `obj` are NEGATIVE mints
+(debts — their own types owe a stream-token: `snet (arrow stream
+knowledge) = −1`), while `nil`/`terminate`/`gen` mint nothing at the
+stream sort. A stream consumed by a `red`-fire is paid for by the
+constant's own type-debt — the same neutrality `tFlowEq` gives
+killer-apps, at a constant. The fixpoint MINTS the stream it unrolls
+(`+ snet a`) — the epistemic cycle is the only stream source in the
+grammar, which is exactly why the fix-free fragment can afford this
+account. -/
+
+/-- Stream-net: stream ↦ 1, arrows owe codomain and are owed domain. -/
+def snet : Ty → Int
+  | .stream => 1
+  | .later a => snet a
+  | .tensor a b => snet a + snet b
+  | .arrow a b => snet b - snet a
+  | _ => 0
+
+/-- Non-linear types carry no stream-tokens (stream is linear). -/
+theorem nonlinear_snet : ∀ a : Ty, a.isLinear = false → snet a = 0 := by
+  intro a
+  cases a with
+  | content => intro h; exact Bool.noConfusion h
+  | trace => intro h; exact Bool.noConfusion h
+  | stream => intro h; exact Bool.noConfusion h
+  | knower | knowledge | value | unit => intro _; rfl
+  | later a' => intro h; exact nonlinear_snet a' h
+  | tensor a' b' =>
+      intro h
+      have h' := Bool.or_eq_false_iff.mp (by simpa only [Ty.isLinear] using h)
+      rw [snet, nonlinear_snet a' h'.1, nonlinear_snet b' h'.2]; rfl
+  | arrow a' b' =>
+      intro h
+      have h' := Bool.or_eq_false_iff.mp (by simpa only [Ty.isLinear] using h)
+      rw [snet, nonlinear_snet b' h'.2, nonlinear_snet a' h'.1]; rfl
+
+/-- Stream-weighted spend of a derivation's context. -/
+def sSpend {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ) : Int :=
+  wSpendFrom snet 0 Γ (uses h)
+
+/-- FUSION for streams: at any hypothesis position the stream-weighted
+spend is EXACT. -/
+theorem binder_sexact : ∀ (a : Ty) {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ)
+    {i : Nat} (hpos : Γ[i]? = some a), (uses h i : Int) * snet a = snet a := by
+  intro a Γ t τ h i hpos
+  cases hlin : a.isLinear with
+  | true =>
+      have hu := single_linear_use h i a hpos hlin
+      rw [hu]
+      simp
+  | false =>
+      have h0 := nonlinear_snet a hlin
+      rw [h0, Int.mul_zero]
+
+/-- Stream MINTS: `red`/`obj` are DEBTS (each owes one stream-token),
+the guarded fixpoint mints its conclusion's tokens. -/
+def sMint : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Int
+  | _, _, _, Typed.red => -1
+  | _, _, _, Typed.obj => -1
+  | _, _, _, @Typed.fix _ a _ _ h => sMint h + snet a
+  | _, _, _, @Typed.lam _ _ _ _ h => sMint h
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _ => sMint hf + sMint ha
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _ => sMint hl + sMint hr
+  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _ => sMint ht + sMint hb
+  | _, _, _, @Typed.next _ _ _ h => sMint h
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht _ => sMint hc + sMint ht
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _ => sMint ht + sMint hu
+  | _, _, _, @Typed.contr _ _ _ _ _ h => sMint h
+  | _, _, _, @Typed.weak _ _ _ _ _ h => sMint h
+  | _, _, _, _ => 0
+
+/-- THE STREAM FLOW EQUALITY: the stream-tokens the conclusion carries
+equal what the context spent plus what was minted (the fixpoint) minus
+what the reducers owe (`red`/`obj` debts). The `tFlowEq` template at the
+stream weight. -/
+theorem sFlowEq : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    snet τ = sSpend h + sMint h
+  | _, _, _, Typed.var => by
+      simp [sSpend, wSpendFrom, uses, snet, sMint]
+  | _, _, _, @Typed.lam Γ a b body h => by
+      have ih := sFlowEq h
+      have hb := binder_sexact a h (List.get?_zero_cons')
+      have hsplit : sSpend (Γ := a :: Γ) h
+          = (uses h 0 : Int) * snet a + wSpendFrom snet 1 Γ (uses h) := rfl
+      rw [hsplit] at ih
+      have hreb : wSpendFrom snet 0 Γ (uses (@Typed.lam Γ a b body h))
+          = wSpendFrom snet 1 Γ (uses h) :=
+        wSpendFrom_rebase snet Γ (uses (@Typed.lam Γ a b body h)) (uses h) 0 1
+          fun i => by rw [Nat.zero_add, Nat.add_comm 1 i]; rfl
+      show snet (a.arrow b) = _
+      simp only [sSpend, snet, sMint] at ih ⊢
+      rw [hb] at ih
+      clear hb
+      rw [hreb]
+      omega
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs => by
+      have ihf := sFlowEq hf
+      have iha := sFlowEq ha
+      subst hs
+      have h1 : wSpendFrom snet 0 Γ (uses (@Typed.app (Γ ++ Δ) Γ Δ X b fn arg hf ha rfl))
+          = wSpendFrom snet 0 Γ (uses hf) :=
+        wSpendFrom_congr snet Γ _ _ 0 fun i _ hilt => by
+          show (if i < Γ.length then uses hf i else uses ha (i - Γ.length)) = uses hf i
+          rw [if_pos (by omega)]
+      have h2 : wSpendFrom snet (0 + Γ.length) Δ (uses (@Typed.app (Γ ++ Δ) Γ Δ X b fn arg hf ha rfl))
+          = wSpendFrom snet 0 Δ (uses ha) :=
+        wSpendFrom_rebase snet Δ _ _ (0 + Γ.length) 0 fun i => by
+          show (if 0 + Γ.length + i < Γ.length then uses hf (0 + Γ.length + i)
+                else uses ha (0 + Γ.length + i - Γ.length)) = uses ha (0 + i)
+          rw [if_neg (by omega), Nat.zero_add, Nat.add_sub_cancel_left]
+          rw [Nat.zero_add]
+      show snet b = _
+      simp only [sSpend] at ihf iha ⊢
+      rw [wSpendFrom_append, h1, h2] at ⊢
+      simp only [snet, sMint] at ihf iha ⊢
+      omega
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs => by
+      have ihl := sFlowEq hl
+      have ihr := sFlowEq hr
+      subst hs
+      have h1 : wSpendFrom snet 0 Γ (uses (@Typed.pair (Γ ++ Δ) Γ Δ a b l r hl hr rfl))
+          = wSpendFrom snet 0 Γ (uses hl) :=
+        wSpendFrom_congr snet Γ _ _ 0 fun i _ hilt => by
+          show (if i < Γ.length then uses hl i else uses hr (i - Γ.length)) = uses hl i
+          rw [if_pos (by omega)]
+      have h2 : wSpendFrom snet (0 + Γ.length) Δ (uses (@Typed.pair (Γ ++ Δ) Γ Δ a b l r hl hr rfl))
+          = wSpendFrom snet 0 Δ (uses hr) :=
+        wSpendFrom_rebase snet Δ _ _ (0 + Γ.length) 0 fun i => by
+          show (if 0 + Γ.length + i < Γ.length then uses hl (0 + Γ.length + i)
+                else uses hr (0 + Γ.length + i - Γ.length)) = uses hr (0 + i)
+          rw [if_neg (by omega), Nat.zero_add, Nat.add_sub_cancel_left]
+          rw [Nat.zero_add]
+      show snet (a.tensor b) = _
+      simp only [sSpend] at ihl ihr ⊢
+      rw [wSpendFrom_append, h1, h2] at ⊢
+      simp only [snet, sMint] at ihl ihr ⊢
+      omega
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs => by
+      have iht := sFlowEq ht
+      have ihb := sFlowEq hb
+      have hb0 := binder_sexact b hb (List.get?_zero_cons')
+      have hb1 := binder_sexact a hb (by rw [List.get?_succ_cons']; exact List.get?_zero_cons')
+      have hsplit : sSpend (Γ := b :: a :: Γ₂) hb
+          = (uses hb 0 : Int) * snet b + ((uses hb 1 : Int) * snet a
+            + wSpendFrom snet 2 Γ₂ (uses hb)) := rfl
+      rw [hsplit] at ihb
+      rw [hb0, hb1] at ihb
+      clear hb0 hb1
+      subst hs
+      have h1 : wSpendFrom snet 0 Γ₁ (uses (@Typed.lete (Γ₁ ++ Γ₂) Γ₁ Γ₂ a b c t body ht hb rfl))
+          = wSpendFrom snet 0 Γ₁ (uses ht) :=
+        wSpendFrom_congr snet Γ₁ _ _ 0 fun i _ hilt => by
+          show (if i < Γ₁.length then uses ht i else uses hb (i - Γ₁.length + 2)) = uses ht i
+          rw [if_pos (by omega)]
+      have h2 : wSpendFrom snet (0 + Γ₁.length) Γ₂ (uses (@Typed.lete (Γ₁ ++ Γ₂) Γ₁ Γ₂ a b c t body ht hb rfl))
+          = wSpendFrom snet 2 Γ₂ (uses hb) :=
+        wSpendFrom_rebase snet Γ₂ _ _ (0 + Γ₁.length) 2 fun i => by
+          show (if 0 + Γ₁.length + i < Γ₁.length then uses ht (0 + Γ₁.length + i)
+                else uses hb (0 + Γ₁.length + i - Γ₁.length + 2)) = uses hb (2 + i)
+          rw [if_neg (by omega), Nat.zero_add, Nat.add_sub_cancel_left]
+          rw [Nat.add_comm 2 i]
+      show snet c = _
+      simp only [sSpend] at iht ihb ⊢
+      rw [wSpendFrom_append, h1, h2] at ⊢
+      simp only [snet, sMint] at iht ihb ⊢
+      omega
+  | _, _, _, Typed.unit => by
+      simp [snet, sSpend, wSpendFrom, sMint]
+  | _, _, _, @Typed.next Γ a t h => sFlowEq h
+  | _, _, _, Typed.nil => by
+      simp [snet, sSpend, wSpendFrom, sMint]
+  | _, _, _, @Typed.red => by
+      simp [snet, sSpend, wSpendFrom, uses, sMint]
+  | _, _, _, @Typed.obj => by
+      simp [snet, sSpend, wSpendFrom, uses, sMint]
+  | _, _, _, @Typed.terminate => by
+      simp [snet, sSpend, wSpendFrom, uses, sMint]
+  | _, _, _, @Typed.gen => by
+      simp [snet, sSpend, wSpendFrom, uses, sMint]
+  | _, _, _, @Typed.fix Γ a body hΓ h => by
+      have ih := sFlowEq h
+      have harr : snet (Ty.arrow (Ty.later a) a) = snet a - snet (Ty.later a) := rfl
+      rw [harr] at ih
+      have hla : snet (Ty.later a) = snet a := rfl
+      rw [hla, Int.sub_self] at ih
+      show snet a = _
+      have huf : wSpendFrom snet 0 Γ (uses (@Typed.fix Γ a body hΓ h))
+          = wSpendFrom snet 0 Γ (uses h) := rfl
+      rw [sSpend, huf]
+      rw [sSpend] at ih
+      simp only [sMint] at ih ⊢
+      omega
+  | _, _, _, @Typed.cons E Γ Δ hd tl hc ht hs => by
+      have ihc := sFlowEq hc
+      have iht := sFlowEq ht
+      subst hs
+      have h1 : wSpendFrom snet 0 Γ (uses (@Typed.cons (Γ ++ Δ) Γ Δ hd tl hc ht rfl))
+          = wSpendFrom snet 0 Γ (uses hc) :=
+        wSpendFrom_congr snet Γ _ _ 0 fun i _ hilt => by
+          show (if i < Γ.length then uses hc i else uses ht (i - Γ.length)) = uses hc i
+          rw [if_pos (by omega)]
+      have h2 : wSpendFrom snet (0 + Γ.length) Δ (uses (@Typed.cons (Γ ++ Δ) Γ Δ hd tl hc ht rfl))
+          = wSpendFrom snet 0 Δ (uses ht) :=
+        wSpendFrom_rebase snet Δ _ _ (0 + Γ.length) 0 fun i => by
+          show (if 0 + Γ.length + i < Γ.length then uses hc (0 + Γ.length + i)
+                else uses ht (0 + Γ.length + i - Γ.length)) = uses ht (0 + i)
+          rw [if_neg (by omega), Nat.zero_add, Nat.add_sub_cancel_left]
+          rw [Nat.zero_add]
+      show snet Ty.stream = _
+      simp only [sSpend] at ihc iht ⊢
+      rw [wSpendFrom_append, h1, h2] at ⊢
+      simp only [snet, sMint] at ihc iht ⊢
+      omega
+  | _, _, _, @Typed.snoc E Γ Δ t u ht hu hs => by
+      have iht := sFlowEq ht
+      have ihu := sFlowEq hu
+      subst hs
+      have h1 : wSpendFrom snet 0 Γ (uses (@Typed.snoc (Γ ++ Δ) Γ Δ t u ht hu rfl))
+          = wSpendFrom snet 0 Γ (uses ht) :=
+        wSpendFrom_congr snet Γ _ _ 0 fun i _ hilt => by
+          show (if i < Γ.length then uses ht i else uses hu (i - Γ.length)) = uses ht i
+          rw [if_pos (by omega)]
+      have h2 : wSpendFrom snet (0 + Γ.length) Δ (uses (@Typed.snoc (Γ ++ Δ) Γ Δ t u ht hu rfl))
+          = wSpendFrom snet 0 Δ (uses hu) :=
+        wSpendFrom_rebase snet Δ _ _ (0 + Γ.length) 0 fun i => by
+          show (if 0 + Γ.length + i < Γ.length then uses ht (0 + Γ.length + i)
+                else uses hu (0 + Γ.length + i - Γ.length)) = uses hu (0 + i)
+          rw [if_neg (by omega), Nat.zero_add, Nat.add_sub_cancel_left]
+          rw [Nat.zero_add]
+      show snet Ty.trace = _
+      simp only [sSpend] at iht ihu ⊢
+      rw [wSpendFrom_append, h1, h2] at ⊢
+      simp only [snet, sMint] at iht ihu ⊢
+      omega
+  | _, _, _, @Typed.contr Γ k t τ hk h => by
+      have ih := sFlowEq h
+      have hk0 := nonlinear_snet k hk
+      have hsplitI : sSpend (Γ := k :: k :: Γ) h
+          = (uses h 0 : Int) * snet k + ((uses h 1 : Int) * snet k
+            + wSpendFrom snet 2 Γ (uses h)) := rfl
+      rw [hsplitI, hk0] at ih
+      simp only [Int.mul_zero, Int.add_zero, Int.zero_add] at ih
+      have hreb : wSpendFrom snet (0 + 1) Γ (uses (@Typed.contr Γ k t τ hk h))
+          = wSpendFrom snet 2 Γ (uses h) :=
+        wSpendFrom_rebase snet Γ _ _ (0 + 1) 2 fun i => by
+          have h1 : (1 + i : Nat) ≠ 0 := by omega
+          simp only [uses, if_neg h1]
+          congr 1
+          omega
+      show snet τ = _
+      rw [sSpend, wSpendFrom]
+      rw [hreb, hk0]
+      simp only [Int.mul_zero, Int.add_zero, Int.zero_add]
+      simp only [sMint]
+      exact ih
+  | _, _, _, @Typed.weak Γ k t τ hk h => by
+      have ih := sFlowEq h
+      have hk0 := nonlinear_snet k hk
+      show snet τ = _
+      rw [sSpend, wSpendFrom]
+      have hreb : wSpendFrom snet (0 + 1) Γ (uses (@Typed.weak Γ k t τ hk h))
+          = wSpendFrom snet 0 Γ (uses h) :=
+        wSpendFrom_rebase snet Γ _ _ (0 + 1) 0 fun i => by
+          have h1 : (1 + i : Nat) ≠ 0 := by omega
+          simp only [uses, if_neg h1, Nat.add_sub_cancel_left, Nat.zero_add]
+      rw [hreb]
+      have h0 : (uses (@Typed.weak Γ k t τ hk h) 0 : Int) * snet k = 0 := by
+        rw [hk0, Int.mul_zero]
+      rw [h0, Int.zero_add]
+      simp only [sMint]
+      exact ih
+
+/-- Fix-free stream-mints are debts or zero: the only positive mint is
+the fixpoint's (the epistemic cycle), excluded. -/
+theorem sMint_nonpos : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    fixCount h = 0 → sMint h ≤ 0 := by
+  intro Γ t τ h
+  induction h with
+  | red => intro _; simp only [sMint]; omega
+  | obj => intro _; simp only [sMint]; omega
+  | unit => intro _; simp only [sMint]; omega
+  | nil => intro _; simp only [sMint]; omega
+  | gen => intro _; simp only [sMint]; omega
+  | terminate => intro _; simp only [sMint]; omega
+  | var => intro _; simp only [sMint]; omega
+  | lam _ ih =>
+      intro hfc
+      have hm := ih (by simpa only [fixCount] using hfc)
+      simp only [sMint] at *
+      omega
+  | next _ ih =>
+      intro hfc
+      have hm := ih (by simpa only [fixCount] using hfc)
+      simp only [sMint] at *
+      omega
+  | contr _ _ ih =>
+      intro hfc
+      have hm := ih (by simpa only [fixCount] using hfc)
+      simp only [sMint] at *
+      omega
+  | weak _ _ ih =>
+      intro hfc
+      have hm := ih (by simpa only [fixCount] using hfc)
+      simp only [sMint] at *
+      omega
+  | app _ _ _ ihf iha =>
+      intro hfc
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      have e1 := ihf h1
+      have e2 := iha h2
+      simp only [sMint] at *
+      omega
+  | pair _ _ _ ihl ihr =>
+      intro hfc
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      have e1 := ihl h1
+      have e2 := ihr h2
+      simp only [sMint] at *
+      omega
+  | lete _ _ _ iht ihb =>
+      intro hfc
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      have e1 := iht h1
+      have e2 := ihb h2
+      simp only [sMint] at *
+      omega
+  | cons _ _ _ ihc iht =>
+      intro hfc
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      have e1 := ihc h1
+      have e2 := iht h2
+      simp only [sMint] at *
+      omega
+  | snoc _ _ _ iht ihu =>
+      intro hfc
+      obtain ⟨h1, h2⟩ : fixCount _ = 0 ∧ fixCount _ = 0 := by
+        simpa only [fixCount, Nat.add_eq_zero_iff] using hfc
+      have e1 := iht h1
+      have e2 := ihu h2
+      simp only [sMint] at *
+      omega
+  | fix _ _ _ =>
+      intro hfc
+      simp only [fixCount] at hfc
+      omega
+
+/-- STREAM-ORIGIN (the cons-side base of the chase): a fix-free
+`▷stream`-conclusion derivation SPENDS a stream-carrying position of its
+context — `sFlowEq` books the budget; the only positive mint is the
+fixpoint's, banned. -/
+theorem stream_origin {Γ : List Ty} {t : Term}
+    (h : Typed Γ t (.later Ty.stream)) (hfc : fixCount h = 0) :
+    ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ snet b > 0 ∧ uses h i ≥ 1 := by
+  have hsm : sMint h ≤ 0 := sMint_nonpos h hfc
+  have he := sFlowEq h
+  simp only [snet] at he
+  refine Classical.byContradiction fun hcon => ?_
+  have hle : sSpend h ≤ 0 := by
+    simp only [sSpend]
+    refine wSpendFrom_nonpos snet 0 Γ (uses h) ?_
+    intro (i : Nat) (a : Ty) hpos'
+    simp only [Nat.zero_add]
+    by_cases ht : snet a > 0
+    · have hu : uses h i = 0 := by
+        rcases Nat.lt_or_ge (uses h i) 1 with hlt | hge
+        · omega
+        · exact absurd ⟨i, a, hpos', ht, hge⟩ hcon
+      rw [hu]
+      simp
+    · have hle' : snet a ≤ 0 := by omega
+      exact Int.mul_nonpos_of_nonneg_of_nonpos (Int.natCast_nonneg _) hle'
+  omega
+
 
 end Dcare
