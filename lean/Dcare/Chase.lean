@@ -1976,4 +1976,157 @@ theorem sub_len_trans : ∀ {E₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {a : Typ
   | contrD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.contr h2
   | weakD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.weak h2
 
+
+/-! ## The corner's level machinery
+
+The corner's level-drop (the one-liner's formal form): the factored
+position-introduction — the new piece's introducer's path is a strict
+prefix of the old chain — plus the composition lemmas that let the
+factored form thread through the arms. (The `sub_path` unfoldings use
+per-arm PINNED rewrites — the bare constructors in the theorem
+equations re-raise the metavariable failure under `simp`.) -/
+
+/-- `Path_append` associates: appending a two-segment path is the same
+as appending segment by segment. -/
+theorem path_append_assoc : ∀ {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γc : List Ty} {tc : Term} {τc : Ty} {c : Typed Γc tc τc} (hpc : Path root c)
+    {Γm : List Ty} {tm : Term} {τm : Ty} {m : Typed Γm tm τm} (hp1 : Path c m),
+    ∀ {Γ : List Ty} {t : Term} {τ : Ty} {v : Typed Γ t τ} (hp2 : Path m v),
+    Path_append m root hp2 (Path_append c root hp1 hpc) =
+    Path_append c root (Path_append m c hp2 hp1) hpc := by
+  intro Γ₀ t₀ τ₀ root Γc tc τc c hpc Γm tm τm m hp1 Γ t τ v hp2
+  induction hp2 with
+  | here => rfl
+  | step p s ih => simp only [Path_append, ih]
+
+/-- `sub_path` commutes with `Sub_trans`: the path of the composite is
+the composition of the paths. -/
+theorem sub_path_trans : ∀ {E₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {a : Typed E₁ t₁ τ₁}
+    {E₂ : List Ty} {t₂ : Term} {τ₂ : Ty} {b : Typed E₂ t₂ τ₂} (h1 : Sub a b),
+    ∀ {E₃ : List Ty} {t₃ : Term} {τ₃ : Ty} {c : Typed E₃ t₃ τ₃} (h2 : Sub b c),
+    sub_path (Sub_trans h1 h2) = Path_append b a (sub_path h2) (sub_path h1) := by
+  intro E₁ t₁ τ₁ a E₂ t₂ τ₂ b h1
+  induction h1 with
+  | @lam Γ a' b' body h Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @appL E Γ Δ X b' fn arg hf ha hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @appR E Γ Δ X b' fn arg hf ha hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @pairL E Γ Δ a' b' l r hl hr hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @pairR E Γ Δ a' b' l r hl hr hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @leteT E Γ₁ Γ₂ a' b' c' t body ht hb hs Γ₂' t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @leteB E Γ₁ Γ₂ a' b' c' t body ht hb hs Γ₂' t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @next Γ a' t h Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @fix Γ a' body hΓ h Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @consH E Γ Δ hd tl hc ht hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @consT E Γ Δ hd tl hc ht hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @snocT E Γ Δ t u ht hu hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @snocU E Γ Δ t u ht hu hs Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @contr Γ k t τ hk h Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @weak Γ k t τ hk h Γ₂ t₂ τ₂ d s ih =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @lamD Γ a' b' body h =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @appLD E Γ Δ X b' fn arg hf ha hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @appRD E Γ Δ X b' fn arg hf ha hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @pairLD E Γ Δ a' b' l r hl hr hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @pairRD E Γ Δ a' b' l r hl hr hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @leteTD E Γ₁ Γ₂ a' b' c' t body ht hb hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @leteBD E Γ₁ Γ₂ a' b' c' t body ht hb hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @nextD Γ a' t h =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @fixD Γ a' body hΓ h =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @consHD E Γ Δ hd tl hc ht hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @consTD E Γ Δ hd tl hc ht hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @snocTD E Γ Δ t u ht hu hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @snocUD E Γ Δ t u ht hu hs =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @contrD Γ k t τ hk h =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+  | @weakD Γ k t τ hk h =>
+      intro E₃ t₃ τ₃ c h2
+      simp only [Sub_trans]
+
+
+
 end Dcare

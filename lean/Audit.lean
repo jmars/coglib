@@ -158,3 +158,5 @@ Rules:
 #print axioms Dcare.SubLen
 #print axioms Dcare.sub_len_exists
 #print axioms Dcare.sub_len_trans
+#print axioms Dcare.path_append_assoc
+#print axioms Dcare.sub_path_trans
