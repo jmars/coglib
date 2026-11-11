@@ -155,3 +155,6 @@ Rules:
 #print axioms Dcare.SlotsOf
 #print axioms Dcare.path_slots
 #print axioms Dcare.slots_of_append
+#print axioms Dcare.SubLen
+#print axioms Dcare.sub_len_exists
+#print axioms Dcare.sub_len_trans

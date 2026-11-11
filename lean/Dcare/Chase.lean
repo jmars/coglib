@@ -1807,4 +1807,173 @@ theorem slots_of_append : ∀ {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root
   | weakP p hs ih =>
       exact SlotsOf.weakP (Path_append c root p hp) (ih hc)
 
+/-! ## The Sub-length — the chase fuel's level
+
+The level (the node's depth) must be DATA for the one-Nat fuel, and
+`Path`/`Sub` are Prop-valued. The slot-LIST approach runs into the
+derivation DAG (the same node can sit at two positions — pair h h — so
+list-functionality fails). The clean measure: the LENGTH OF THE SUB
+CERTIFICATE ITSELF, as a canonical inductive relation — the canonical
+construction makes the compositionality (`Sub_trans`) hold by
+induction, with no functionality lemma needed. -/
+
+/-- `SubLen s n`: `n` is the canonical length of the `Sub` certificate
+`s` (one per constructor). The 15 bases have length 1; the wrapping
+constructors add one to their premise's length. -/
+inductive SubLen : {Γ₁ : List Ty} → {t₁ : Term} → {τ₁ : Ty} → {h : Typed Γ₁ t₁ τ₁} →
+    {Γ₂ : List Ty} → {t₂ : Term} → {τ₂ : Ty} → {d : Typed Γ₂ t₂ τ₂} →
+    Sub h d → Nat → Prop where
+  | lam {Γ a b body} {h : Typed (a :: Γ) body b} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂}
+      {s : Sub h d} {n : Nat} : SubLen s n → SubLen (Sub.lam (h := h) s) (n + 1)
+  | appL {E Γ Δ a b fn arg} {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub hf d} {n : Nat} :
+      SubLen s n → SubLen (Sub.appL (hf := hf) (ha := ha) (hs := hs) s) (n + 1)
+  | appR {E Γ Δ a b fn arg} {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub ha d} {n : Nat} :
+      SubLen s n → SubLen (Sub.appR (hf := hf) (ha := ha) (hs := hs) s) (n + 1)
+  | pairL {E Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub hl d} {n : Nat} :
+      SubLen s n → SubLen (Sub.pairL (hl := hl) (hr := hr) (hs := hs) s) (n + 1)
+  | pairR {E Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub hr d} {n : Nat} :
+      SubLen s n → SubLen (Sub.pairR (hl := hl) (hr := hr) (hs := hs) s) (n + 1)
+  | leteT {E Γ₁ Γ₂ a b c t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E}
+      {Γ' t' τ'} {d : Typed Γ' t' τ'} {s : Sub ht d} {n : Nat} :
+      SubLen s n → SubLen (Sub.leteT (ht := ht) (hb := hb) (hs := hs) s) (n + 1)
+  | leteB {E Γ₁ Γ₂ a b c t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E}
+      {Γ' t' τ'} {d : Typed Γ' t' τ'} {s : Sub hb d} {n : Nat} :
+      SubLen s n → SubLen (Sub.leteB (ht := ht) (hb := hb) (hs := hs) s) (n + 1)
+  | next {Γ a t} {h : Typed Γ t a} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂}
+      {s : Sub h d} {n : Nat} : SubLen s n → SubLen (Sub.next (h := h) s) (n + 1)
+  | fix {Γ a body} {hΓ : AllNonLinear Γ} {h : Typed Γ body (.arrow (.later a) a)}
+      {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub h d} {n : Nat} :
+      SubLen s n → SubLen (Sub.fix (hΓ := hΓ) (h := h) s) (n + 1)
+  | consH {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub hc d} {n : Nat} :
+      SubLen s n → SubLen (Sub.consH (hc := hc) (ht := ht) (hs := hs) s) (n + 1)
+  | consT {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub ht d} {n : Nat} :
+      SubLen s n → SubLen (Sub.consT (hc := hc) (ht := ht) (hs := hs) s) (n + 1)
+  | snocT {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub ht d} {n : Nat} :
+      SubLen s n → SubLen (Sub.snocT (ht := ht) (hu := hu) (hs := hs) s) (n + 1)
+  | snocU {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub hu d} {n : Nat} :
+      SubLen s n → SubLen (Sub.snocU (ht := ht) (hu := hu) (hs := hs) s) (n + 1)
+  | contr {Γ k t τ} {hk : k.isLinear = false} {h : Typed (k :: k :: Γ) (Term.mergeAt 0 t) τ}
+      {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub h d} {n : Nat} :
+      SubLen s n → SubLen (Sub.contr (hk := hk) (h := h) s) (n + 1)
+  | weak {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed Γ t τ} {Γ₂ t₂ τ₂} {d : Typed Γ₂ t₂ τ₂} {s : Sub h d} {n : Nat} :
+      SubLen s n → SubLen (Sub.weak (hk := hk) (h := h) s) (n + 1)
+  | lamD {Γ a b body} {h : Typed (a :: Γ) body b} : SubLen (Sub.lamD (h := h)) 1
+  | appLD {E Γ Δ a b fn arg} {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.appLD (hf := hf) (ha := ha) (hs := hs)) 1
+  | appRD {E Γ Δ a b fn arg} {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.appRD (hf := hf) (ha := ha) (hs := hs)) 1
+  | pairLD {E Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.pairLD (hl := hl) (hr := hr) (hs := hs)) 1
+  | pairRD {E Γ Δ a b l r} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.pairRD (hl := hl) (hr := hr) (hs := hs)) 1
+  | leteTD {E Γ₁ Γ₂ a b c t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E} :
+      SubLen (Sub.leteTD (ht := ht) (hb := hb) (hs := hs)) 1
+  | leteBD {E Γ₁ Γ₂ a b c t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c} {hs : Γ₁ ++ Γ₂ = E} :
+      SubLen (Sub.leteBD (ht := ht) (hb := hb) (hs := hs)) 1
+  | nextD {Γ a t} {h : Typed Γ t a} : SubLen (Sub.nextD (h := h)) 1
+  | fixD {Γ a body} {hΓ : AllNonLinear Γ} {h : Typed Γ body (.arrow (.later a) a)} :
+      SubLen (Sub.fixD (hΓ := hΓ) (h := h)) 1
+  | consHD {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.consHD (hc := hc) (ht := ht) (hs := hs)) 1
+  | consTD {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.consTD (hc := hc) (ht := ht) (hs := hs)) 1
+  | snocTD {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.snocTD (ht := ht) (hu := hu) (hs := hs)) 1
+  | snocUD {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : SubLen (Sub.snocUD (ht := ht) (hu := hu) (hs := hs)) 1
+  | contrD {Γ k t τ} {hk : k.isLinear = false} {h : Typed (k :: k :: Γ) (Term.mergeAt 0 t) τ} :
+      SubLen (Sub.contrD (hk := hk) (h := h)) 1
+  | weakD {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed Γ t τ} : SubLen (Sub.weakD (hk := hk) (h := h)) 1
+
+/-- Every `Sub` certificate has a canonical length. -/
+theorem sub_len_exists : ∀ {Γ₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {h : Typed Γ₁ t₁ τ₁}
+    {Γ₂ : List Ty} {t₂ : Term} {τ₂ : Ty} {d : Typed Γ₂ t₂ τ₂} (s : Sub h d),
+    ∃ (n : Nat), SubLen s n := by
+  intro Γ₁ t₁ τ₁ h Γ₂ t₂ τ₂ d s
+  induction s with
+  | lam s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.lam hn⟩
+  | appL s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.appL hn⟩
+  | appR s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.appR hn⟩
+  | pairL s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.pairL hn⟩
+  | pairR s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.pairR hn⟩
+  | leteT s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.leteT hn⟩
+  | leteB s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.leteB hn⟩
+  | next s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.next hn⟩
+  | fix s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.fix hn⟩
+  | consH s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.consH hn⟩
+  | consT s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.consT hn⟩
+  | snocT s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.snocT hn⟩
+  | snocU s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.snocU hn⟩
+  | contr s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.contr hn⟩
+  | weak s ih => rcases ih with ⟨n, hn⟩; exact ⟨n + 1, SubLen.weak hn⟩
+  | lamD => exact ⟨1, SubLen.lamD⟩
+  | appLD => exact ⟨1, SubLen.appLD⟩
+  | appRD => exact ⟨1, SubLen.appRD⟩
+  | pairLD => exact ⟨1, SubLen.pairLD⟩
+  | pairRD => exact ⟨1, SubLen.pairRD⟩
+  | leteTD => exact ⟨1, SubLen.leteTD⟩
+  | leteBD => exact ⟨1, SubLen.leteBD⟩
+  | nextD => exact ⟨1, SubLen.nextD⟩
+  | fixD => exact ⟨1, SubLen.fixD⟩
+  | consHD => exact ⟨1, SubLen.consHD⟩
+  | consTD => exact ⟨1, SubLen.consTD⟩
+  | snocTD => exact ⟨1, SubLen.snocTD⟩
+  | snocUD => exact ⟨1, SubLen.snocUD⟩
+  | contrD => exact ⟨1, SubLen.contrD⟩
+  | weakD => exact ⟨1, SubLen.weakD⟩
+
+/-- The length composes over `Sub_trans`: the length of the composite
+is the sum — the canonical construction makes this hold by induction. -/
+theorem sub_len_trans : ∀ {E₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {a : Typed E₁ t₁ τ₁}
+    {E₂ : List Ty} {t₂ : Term} {τ₂ : Ty} {b : Typed E₂ t₂ τ₂} {s₁ : Sub a b}
+    {n₁ : Nat}, SubLen s₁ n₁ →
+    ∀ {E₃ : List Ty} {t₃ : Term} {τ₃ : Ty} {c : Typed E₃ t₃ τ₃} {s₂ : Sub b c}
+      {n₂ : Nat}, SubLen s₂ n₂ → SubLen (Sub_trans s₁ s₂) (n₁ + n₂) := by
+  intro E₁ t₁ τ₁ a E₂ t₂ τ₂ b s₁ n₁ h1
+  induction h1 with
+  | lam h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.lam (ih h2)
+  | appL h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.appL (ih h2)
+  | appR h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.appR (ih h2)
+  | pairL h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.pairL (ih h2)
+  | pairR h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.pairR (ih h2)
+  | leteT h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.leteT (ih h2)
+  | leteB h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.leteB (ih h2)
+  | next h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.next (ih h2)
+  | fix h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.fix (ih h2)
+  | consH h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.consH (ih h2)
+  | consT h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.consT (ih h2)
+  | snocT h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.snocT (ih h2)
+  | snocU h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.snocU (ih h2)
+  | contr h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.contr (ih h2)
+  | weak h ih => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_assoc, Nat.add_comm, Nat.add_left_comm] using SubLen.weak (ih h2)
+  | lamD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.lam h2
+  | appLD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.appL h2
+  | appRD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.appR h2
+  | pairLD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.pairL h2
+  | pairRD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.pairR h2
+  | leteTD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.leteT h2
+  | leteBD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.leteB h2
+  | nextD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.next h2
+  | fixD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.fix h2
+  | consHD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.consH h2
+  | consTD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.consT h2
+  | snocTD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.snocT h2
+  | snocUD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.snocU h2
+  | contrD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.contr h2
+  | weakD => intro E₃ t₃ τ₃ c s₂ n₂ h2; simpa only [Nat.add_comm] using SubLen.weak h2
+
 end Dcare
