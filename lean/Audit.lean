@@ -160,3 +160,6 @@ Rules:
 #print axioms Dcare.sub_len_trans
 #print axioms Dcare.path_append_assoc
 #print axioms Dcare.sub_path_trans
+#print axioms Dcare.corner_introducer
+#print axioms Dcare.path_size
+#print axioms Dcare.corner_level_drop

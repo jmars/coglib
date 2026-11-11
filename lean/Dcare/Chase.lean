@@ -2129,4 +2129,74 @@ theorem sub_path_trans : ∀ {E₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {a : Ty
 
 
 
+/-! ## The corner's level machinery (route b, size-encoded)
+
+The corner's position-introduction at the fire's argument — the
+specialized walk (obs 138's route (b), fp8's #94 shape): the corner
+always walks at the fire's arg (the last slot `Prem F' w'` known), so
+the base-arm problem of the general len-carrying re-derivation never
+arises. The return package carries the INTERMEDIATE `Sub β F'` (the
+unfactored `pos_introduced` computes it at the appAP arm and composes
+past it) — the certificate the drop's containment chain needs.
+
+The LEVEL is size-encoded (fp8's #100 endorsement, superseding the
+SubLen route): `size root − size β` for the piece's introducer β — a
+Nat computable from the state, strictly dropped at the corner
+(`Sub β' F'` from the walk + `Prem F' β_old` give the strict size
+chain), non-increasing at M1/M2, arbitrary at the rides, bounded by
+`size root`. Two distinct nodes' sizes never need a certificate
+equality — the derivation DAG is untouched. SubLen/sub_len_trans stay
+banked (proven, off the fuel's critical path).
+-/
+
+/-- THE SPECIALIZED CORNER WALK: a position of the fire's ARGUMENT's
+context either is root-supplied or was introduced by a binder β with
+`Path root β`, `Introduces β b`, `Sub β F'` (β strictly above the fire —
+the intermediate at `pos_introduced`'s appAP arm), and `Sub β ha`
+(β ⊇ the argument). Three lines on the unfactored `pos_introduced`
+applied at the fire's own context. -/
+theorem corner_introducer {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty}
+    (root : Typed Γ₀ t₀ τ₀)
+    {E Γ Δ : List Ty} {X σ : Ty} {fn arg : Term}
+    {hf : Typed Γ fn (.arrow X σ)} {ha : Typed Δ arg X} {hs : Γ ++ Δ = E}
+    (hpF : Path root (Typed.app hf ha hs))
+    (j : Nat) (b : Ty) (hpos : Δ[j]? = some b) :
+    (∃ (k : Nat), Γ₀[k]? = some b) ∨
+    (∃ (E' : List Ty) (tp : Term) (τp : Ty) (β : Typed E' tp τp),
+        Path root β ∧ Introduces β b ∧ Sub β (Typed.app hf ha hs) ∧ Sub β ha) := by
+  have hge : Γ.length ≤ Γ.length + j := Nat.le_add_right Γ.length j
+  rcases pos_introduced root hpF (Γ.length + j) b
+      (by rw [← hs, List.get?_append_ge hge, Nat.add_sub_cancel_left]; exact hpos) with
+    ⟨k, hk⟩ | ⟨E', tp, τp, β, hpβ, hint, sβ⟩
+  · exact Or.inl ⟨k, hk⟩
+  · exact Or.inr ⟨E', tp, τp, β, hpβ, hint, sβ, Sub_trans sβ Sub.appRD⟩
+
+/-- Path containment bounds the size: a node on the root-chain is no
+larger than the root. -/
+theorem path_size {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d) :
+    size d ≤ size root := by
+  induction hp with
+  | here => exact Nat.le_refl _
+  | step p s ih => exact Nat.le_trans (Nat.le_of_lt (Prem_size s)) ih
+
+/-- THE CORNER'S LEVEL DROP, size-encoded: the new introducer β' sits
+strictly above the fire (`Sub β' F'`), the fire strictly above the old
+introducer (`sub_of_prem Prem.appFP`), so the composition gives
+`Sub β' β_old` — sizes strictly grow down the chain, and the
+size-deficit level `size root − size β` strictly drops. The one-liner's
+arithmetic with no SubLen, no functionality, no upward certificates:
+two distinct nodes' sizes never need a certificate equality. -/
+theorem corner_level_drop {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty}
+    (root : Typed Γ₀ t₀ τ₀)
+    {E Γ Δ : List Ty} {X σ : Ty} {fn arg : Term}
+    {hf : Typed Γ fn (.arrow X σ)} {ha : Typed Δ arg X} {hs : Γ ++ Δ = E}
+    {E' : List Ty} {tp : Term} {τp : Ty} {β' : Typed E' tp τp}
+    (hpβ' : Path root β') (sβ'F : Sub β' (Typed.app hf ha hs)) :
+    size root - size β' < size root - size hf := by
+  have hle : size β' ≤ size root := path_size root hpβ'
+  have hchain : Sub β' hf := Sub_trans sβ'F (sub_of_prem Prem.appFP)
+  have hsz : size hf < size β' := Sub_size hchain
+  omega
+
 end Dcare
