@@ -1660,4 +1660,151 @@ theorem no_root_reach : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.uni
       | weakP => exact ih hne'
       | leteBP => exact ih hne'
 
+/-! ## The data-slot path
+
+The chase's fuel encodes the level (the node's depth) as a number, and
+`Path` is Prop-valued — `plen` is large-elimination-refused (obs 110's
+probe). The depth is therefore carried as DATA: a list of slot tags,
+with the correspondence proven via the ∃-witness route (obs 80 M2 —
+legal where plain large elimination is refused). -/
+
+/-- The 15 premise slots as data. -/
+inductive Slot : Type where
+  | lamP | appFP | appAP | pairLP | pairRP | leteTP | leteBP | nextP | fixP
+  | consHP | consTP | snocTP | snocUP | contrP | weakP
+  deriving Inhabited
+
+/-- `SlotsOf root d l`: `l` is the slot-tag list of the path `root → d`,
+innermost-last (the same order `Path` builds). -/
+inductive SlotsOf {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀) :
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → List Slot → Prop where
+  | here : SlotsOf root root []
+  | lamP {E : List Ty} {a b : Ty} {body : Term} {h : Typed (a :: E) body b} {l : List Slot}
+      (p : Path root (Typed.lam h)) (hs : SlotsOf root (Typed.lam h) l) :
+      SlotsOf root h (Slot.lamP :: l)
+  | appFP {E Γ Δ : List Ty} {X b : Ty} {fn arg : Term} {hf : Typed Γ fn (.arrow X b)}
+      {ha : Typed Δ arg X} {hs : Γ ++ Δ = E} {l : List Slot}
+      (p : Path root (Typed.app hf ha hs)) (hs' : SlotsOf root (Typed.app hf ha hs) l) :
+      SlotsOf root hf (Slot.appFP :: l)
+  | appAP {E Γ Δ : List Ty} {X b : Ty} {fn arg : Term} {hf : Typed Γ fn (.arrow X b)}
+      {ha : Typed Δ arg X} {hs : Γ ++ Δ = E} {l : List Slot}
+      (p : Path root (Typed.app hf ha hs)) (hs' : SlotsOf root (Typed.app hf ha hs) l) :
+      SlotsOf root ha (Slot.appAP :: l)
+  | pairLP {E Γ Δ : List Ty} {a b : Ty} {l r : Term} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} {l' : List Slot}
+      (p : Path root (Typed.pair hl hr hs)) (hs' : SlotsOf root (Typed.pair hl hr hs) l') :
+      SlotsOf root hl (Slot.pairLP :: l')
+  | pairRP {E Γ Δ : List Ty} {a b : Ty} {l r : Term} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} {l' : List Slot}
+      (p : Path root (Typed.pair hl hr hs)) (hs' : SlotsOf root (Typed.pair hl hr hs) l') :
+      SlotsOf root hr (Slot.pairRP :: l')
+  | leteTP {E Γ₁ Γ₂ : List Ty} {a b c' : Ty} {t body : Term} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c'} {hs : Γ₁ ++ Γ₂ = E} {l : List Slot}
+      (p : Path root (Typed.lete ht hb hs)) (hs' : SlotsOf root (Typed.lete ht hb hs) l) :
+      SlotsOf root ht (Slot.leteTP :: l)
+  | leteBP {E Γ₁ Γ₂ : List Ty} {a b c' : Ty} {t body : Term} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c'} {hs : Γ₁ ++ Γ₂ = E} {l : List Slot}
+      (p : Path root (Typed.lete ht hb hs)) (hs' : SlotsOf root (Typed.lete ht hb hs) l) :
+      SlotsOf root hb (Slot.leteBP :: l)
+  | nextP {E : List Ty} {a : Ty} {t : Term} {h : Typed E t a} {l : List Slot}
+      (p : Path root (Typed.next h)) (hs : SlotsOf root (Typed.next h) l) :
+      SlotsOf root h (Slot.nextP :: l)
+  | fixP {E : List Ty} {a : Ty} {body : Term} {hΓ : AllNonLinear E}
+      {h : Typed E body (.arrow (.later a) a)} {l : List Slot}
+      (p : Path root (Typed.fix hΓ h)) (hs : SlotsOf root (Typed.fix hΓ h) l) :
+      SlotsOf root h (Slot.fixP :: l)
+  | consHP {E Γ Δ : List Ty} {hd tl : Term} {hc : Typed Γ hd .content}
+      {ht : Typed Δ tl (.later .stream)} {hs : Γ ++ Δ = E} {l : List Slot}
+      (p : Path root (Typed.cons hc ht hs)) (hs' : SlotsOf root (Typed.cons hc ht hs) l) :
+      SlotsOf root hc (Slot.consHP :: l)
+  | consTP {E Γ Δ : List Ty} {hd tl : Term} {hc : Typed Γ hd .content}
+      {ht : Typed Δ tl (.later .stream)} {hs : Γ ++ Δ = E} {l : List Slot}
+      (p : Path root (Typed.cons hc ht hs)) (hs' : SlotsOf root (Typed.cons hc ht hs) l) :
+      SlotsOf root ht (Slot.consTP :: l)
+  | snocTP {E Γ Δ : List Ty} {t u : Term} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} {l : List Slot}
+      (p : Path root (Typed.snoc ht hu hs)) (hs' : SlotsOf root (Typed.snoc ht hu hs) l) :
+      SlotsOf root ht (Slot.snocTP :: l)
+  | snocUP {E Γ Δ : List Ty} {t u : Term} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} {l : List Slot}
+      (p : Path root (Typed.snoc ht hu hs)) (hs' : SlotsOf root (Typed.snoc ht hu hs) l) :
+      SlotsOf root hu (Slot.snocUP :: l)
+  | contrP {E : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed (k :: k :: E) (Term.mergeAt 0 t) τ} {l : List Slot}
+      (p : Path root (Typed.contr hk h)) (hs : SlotsOf root (Typed.contr hk h) l) :
+      SlotsOf root h (Slot.contrP :: l)
+  | weakP {E : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed E t τ} {l : List Slot}
+      (p : Path root (Typed.weak hk h)) (hs : SlotsOf root (Typed.weak hk h) l) :
+      SlotsOf root h (Slot.weakP :: l)
+
+/-- The conversion: every path has a slot-tag list (the ∃-witness route
+— the list is DATA, the correspondence is the `SlotsOf` certificate). -/
+theorem path_slots : ∀ {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d),
+    ∃ (l : List Slot), SlotsOf root d l := by
+  intro Γ₀ t₀ τ₀ root Γ t τ d hp
+  induction hp with
+  | here => exact ⟨[], SlotsOf.here⟩
+  | step p s ih =>
+      rcases ih with ⟨l, hs⟩
+      cases s with
+      | lamP => exact ⟨Slot.lamP :: l, SlotsOf.lamP p hs⟩
+      | appFP => exact ⟨Slot.appFP :: l, SlotsOf.appFP p hs⟩
+      | appAP => exact ⟨Slot.appAP :: l, SlotsOf.appAP p hs⟩
+      | pairLP => exact ⟨Slot.pairLP :: l, SlotsOf.pairLP p hs⟩
+      | pairRP => exact ⟨Slot.pairRP :: l, SlotsOf.pairRP p hs⟩
+      | leteTP => exact ⟨Slot.leteTP :: l, SlotsOf.leteTP p hs⟩
+      | leteBP => exact ⟨Slot.leteBP :: l, SlotsOf.leteBP p hs⟩
+      | nextP => exact ⟨Slot.nextP :: l, SlotsOf.nextP p hs⟩
+      | fixP => exact ⟨Slot.fixP :: l, SlotsOf.fixP p hs⟩
+      | consHP => exact ⟨Slot.consHP :: l, SlotsOf.consHP p hs⟩
+      | consTP => exact ⟨Slot.consTP :: l, SlotsOf.consTP p hs⟩
+      | snocTP => exact ⟨Slot.snocTP :: l, SlotsOf.snocTP p hs⟩
+      | snocUP => exact ⟨Slot.snocUP :: l, SlotsOf.snocUP p hs⟩
+      | contrP => exact ⟨Slot.contrP :: l, SlotsOf.contrP p hs⟩
+      | weakP => exact ⟨Slot.weakP :: l, SlotsOf.weakP p hs⟩
+
+/-- SlotsOf composes along the path: the tags of `c → d` prepend the
+tags of `root → c`. The induction is on the INNER certificate (each
+inner step re-roots its parent's certificate through the outer path). -/
+theorem slots_of_append : ∀ {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γc : List Ty} {tc : Term} {τc : Ty} {c : Typed Γc tc τc} {l : List Slot} (hp : Path root c),
+    SlotsOf root c l →
+    ∀ {Γ : List Ty} {t : Term} {τ : Ty} {v : Typed Γ t τ} {l' : List Slot},
+      SlotsOf c v l' → SlotsOf root v (l' ++ l) := by
+  intro Γ₀ t₀ τ₀ root Γc tc τc c l hp hc Γ t τ v l' hv
+  induction hv generalizing l with
+  | here => simpa using hc
+  | lamP p hs ih =>
+      exact SlotsOf.lamP (Path_append c root p hp) (ih hc)
+  | appFP p hs ih =>
+      exact SlotsOf.appFP (Path_append c root p hp) (ih hc)
+  | appAP p hs ih =>
+      exact SlotsOf.appAP (Path_append c root p hp) (ih hc)
+  | pairLP p hs ih =>
+      exact SlotsOf.pairLP (Path_append c root p hp) (ih hc)
+  | pairRP p hs ih =>
+      exact SlotsOf.pairRP (Path_append c root p hp) (ih hc)
+  | leteTP p hs ih =>
+      exact SlotsOf.leteTP (Path_append c root p hp) (ih hc)
+  | leteBP p hs ih =>
+      exact SlotsOf.leteBP (Path_append c root p hp) (ih hc)
+  | nextP p hs ih =>
+      exact SlotsOf.nextP (Path_append c root p hp) (ih hc)
+  | fixP p hs ih =>
+      exact SlotsOf.fixP (Path_append c root p hp) (ih hc)
+  | consHP p hs ih =>
+      exact SlotsOf.consHP (Path_append c root p hp) (ih hc)
+  | consTP p hs ih =>
+      exact SlotsOf.consTP (Path_append c root p hp) (ih hc)
+  | snocTP p hs ih =>
+      exact SlotsOf.snocTP (Path_append c root p hp) (ih hc)
+  | snocUP p hs ih =>
+      exact SlotsOf.snocUP (Path_append c root p hp) (ih hc)
+  | contrP p hs ih =>
+      exact SlotsOf.contrP (Path_append c root p hp) (ih hc)
+  | weakP p hs ih =>
+      exact SlotsOf.weakP (Path_append c root p hp) (ih hc)
+
 end Dcare

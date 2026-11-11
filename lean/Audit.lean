@@ -151,3 +151,7 @@ Rules:
 #print axioms Dcare.RootReach
 #print axioms Dcare.value_climb
 #print axioms Dcare.no_root_reach
+#print axioms Dcare.Slot
+#print axioms Dcare.SlotsOf
+#print axioms Dcare.path_slots
+#print axioms Dcare.slots_of_append
