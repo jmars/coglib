@@ -131,3 +131,6 @@ Rules:
 #print axioms Dcare.sub_path
 #print axioms Dcare.get?_zero_of_singleton
 #print axioms Dcare.prem_position
+#print axioms Dcare.liftAt0_ne_var0
+#print axioms Dcare.var_canonical
+#print axioms Dcare.chase_step

@@ -371,4 +371,87 @@ theorem prem_position : ∀ {E : List Ty} {tc : Term} {τc : Ty} {p : Typed E tc
         rw [if_neg (by omega)]
         exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓ') hlin))
 
+/-- Lifting at zero never yields `var 0` — every variable moves up. -/
+theorem liftAt0_ne_var0 : ∀ (t : Term), Term.liftAt 0 t ≠ Term.var 0 := by
+  intro t
+  cases t with
+  | var i =>
+      simp only [Term.liftAt]
+      by_cases h0 : (0 : Nat) ≤ i
+      · rw [if_pos h0]; exact fun he => by injection he; omega
+      · rw [if_neg h0]; omega
+  | lam _ _ | app _ _ | pair _ _ | lete _ _ | unit | next _ | fix _ | cons _ _
+  | nil | snoc _ _ | gen | red | obj | terminate =>
+      simp only [Term.liftAt]; intro he; cases he
+
+/-- CANONICAL FORMS for the var-read: a derivation concluding `var 0`
+lives at the singleton `[a]` for its type `a` — the read's context is
+exactly the piece it reads. This is what makes `prem_position` applicable
+to `read_locate`'s output (the singleton hypothesis is always
+satisfiable). Stated with the term-equation as a hypothesis so the
+induction runs past the `weak`/`contr` frames. -/
+theorem var_canonical : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (v : Typed Γ t τ),
+    t = Term.var 0 → ∃ (a : Ty), Γ = [a] ∧ τ = a := by
+  intro Γ t τ v
+  induction v with
+  | var => intro _; exact ⟨_, rfl, rfl⟩
+  | contr hk h ih =>
+      intro hte
+      obtain ⟨a, hc, _⟩ := ih (by rw [hte] <;> rfl)
+      have hlen := congrArg List.length hc
+      simp only [List.length_cons, List.length_nil] at hlen
+      omega
+  | weak hk h ih =>
+      intro hte
+      exact absurd hte (liftAt0_ne_var0 _)
+  | lam _ _ | app _ _ _ | pair _ _ _ | lete _ _ _ | unit | next _ | fix _ _
+  | cons _ _ _ | nil | snoc _ _ _ | gen | red | obj | terminate =>
+      intro hte; cases hte
+
+/-- ONE ROUND OF THE CHASE, decomposed: every state (a positive spent
+position at a clean node) either DESCENDS — a strictly smaller state of
+the same kind, with its path certificate — or sits at a READ-CONFIG: the
+read is a direct premise of a node at-or-below the current one (the
+fire/ride/var-fn/identity-λ shapes the fuel-chase analyzes), or the node
+IS the read (TOP — the introducer analysis). The descent disjunct is
+what the fuel pays in node-size; the configs are the corner/ride/var-fn
+machinery's entries. -/
+theorem chase_step {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d)
+    (hfc : fixCount root = 0) (hmc : mintCount root = 0)
+    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (htb : tnet b > 0) (hu : uses d i ≥ 1) :
+    (∃ (Γ' : List Ty) (t' : Term) (τ' : Ty) (d' : Typed Γ' t' τ') (i' : Nat) (b' : Ty)
+        (hp' : Path root d'),
+        Γ'[i']? = some b' ∧ tnet b' > 0 ∧ uses d' i' ≥ 1 ∧
+        fixCount d' = 0 ∧ mintCount d' = 0 ∧ size d' < size d)
+    ∨ (∃ (E : List Ty) (tc : Term) (τc : Ty) (d' : Typed E tc τc) (hp' : Path root d')
+        (hle : size d' ≤ size d) (Γv : List Ty) (tv : Term) (τv : Ty) (v : Typed Γv tv τv),
+        tv = Term.var 0 ∧ Γv = [τv] ∧ tnet τv > 0 ∧ Prem d' v)
+    ∨ (Γ = [b] ∧ t = Term.var 0 ∧ τ = b ∧ i = 0) := by
+  have hclean := Path_clean root hp hfc hmc
+  rcases read_locate (size d) d (Nat.le_refl _) i b hpos hu with
+    deep | direct | top
+  · -- DEEP: the read's parent p is a proper subderivation — locate the
+    -- state at p, or the parent is the identity-λ.
+    obtain ⟨E, tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ := deep
+    have hta : tnet τv > 0 := by rw [hτv]; exact htb
+    obtain ⟨a, hcΓ, hcτ⟩ := var_canonical v htv
+    have hcΓv : Γv = [τv] := hcτ ▸ hcΓ
+    have hp' : Path root p := Path_append d root (sub_path hsub) hp
+    have hpc := Path_clean root hp' hfc hmc
+    rcases prem_position (p := p) (v := v) hprem htv hcΓv hta with
+      ⟨iₚ, hposₚ, huₚ⟩ | ⟨hE, _⟩
+    · refine Or.inl ⟨E, tp, τp, p, iₚ, τv, hp', hposₚ, hta, huₚ, hpc.1, hpc.2, ?_⟩
+      exact Sub_size hsub
+    · refine Or.inr (Or.inl ⟨E, tp, τp, p, hp', Nat.le_of_lt (Sub_size hsub),
+        Γv, tv, τv, v, htv, hcΓv, hta, hprem⟩)
+  · -- DIRECT: the read is a premise of the state's own node — the config.
+    obtain ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ := direct
+    have hta : tnet τv > 0 := by rw [hτv]; exact htb
+    obtain ⟨a, hcΓ, hcτ⟩ := var_canonical v htv
+    have hcΓv : Γv = [τv] := hcτ ▸ hcΓ
+    exact Or.inr (Or.inl ⟨Γ, t, τ, d, hp, Nat.le_refl _, Γv, tv, τv, v, htv, hcΓv, hta, hprem⟩)
+  · -- TOP: the node IS the read.
+    exact Or.inr (Or.inr ‹_›)
+
 end Dcare
