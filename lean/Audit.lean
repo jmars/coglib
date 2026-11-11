@@ -144,3 +144,8 @@ Rules:
 #print axioms Dcare.uses_zero_of_ge_length
 #print axioms Dcare.Sub_irrefl
 #print axioms Dcare.uses_sub_le
+#print axioms Dcare.sub_of_prem
+#print axioms Dcare.root_unit_prem
+#print axioms Dcare.ConsumingPrem
+#print axioms Dcare.RootReach
+#print axioms Dcare.value_climb

@@ -1371,4 +1371,223 @@ theorem config_lete_elim {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
     · exact Nat.le_of_eq (Eq.symm (single_linear_use hb 1 x
         (List.get?_succ_cons'.trans List.get?_zero_cons') hlin))
 
+/-- Every premise slot is a proper-subderivation step. -/
+theorem sub_of_prem : ∀ {E tc τc} {c : Typed E tc τc} {Γ t τ} {v : Typed Γ t τ},
+    Prem c v → Sub c v
+  | _, _, _, _, _, _, _, _, Prem.lamP => Sub.lamD
+  | _, _, _, _, _, _, _, _, Prem.appFP => Sub.appLD
+  | _, _, _, _, _, _, _, _, Prem.appAP => Sub.appRD
+  | _, _, _, _, _, _, _, _, Prem.pairLP => Sub.pairLD
+  | _, _, _, _, _, _, _, _, Prem.pairRP => Sub.pairRD
+  | _, _, _, _, _, _, _, _, Prem.leteTP => Sub.leteTD
+  | _, _, _, _, _, _, _, _, Prem.leteBP => Sub.leteBD
+  | _, _, _, _, _, _, _, _, Prem.nextP => Sub.nextD
+  | _, _, _, _, _, _, _, _, Prem.fixP => Sub.fixD
+  | _, _, _, _, _, _, _, _, Prem.consHP => Sub.consHD
+  | _, _, _, _, _, _, _, _, Prem.consTP => Sub.consTD
+  | _, _, _, _, _, _, _, _, Prem.snocTP => Sub.snocTD
+  | _, _, _, _, _, _, _, _, Prem.snocUP => Sub.snocUD
+  | _, _, _, _, _, _, _, _, Prem.contrP => Sub.contrD
+  | _, _, _, _, _, _, _, _, Prem.weakP => Sub.weakD
+
+/-- The consuming slots: the fire's fn-side, the fire's arg-side, and
+the lete-scrutinee — where a value's term-occurrence is consumed. Every
+other slot is a ride: the value's term rides inside the composite. -/
+inductive ConsumingPrem : {E : List Ty} → {tc : Term} → {τc : Ty} → {c : Typed E tc τc} →
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → {v : Typed Γ t τ} →
+    Prem c v → Prop where
+  | appFP {E Γ Δ X b fn arg} {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X}
+      {hs : Γ ++ Δ = E} :
+      ConsumingPrem (Prem.appFP (Γ := Γ) (Δ := Δ) (X := X) (b := b) (fn := fn)
+        (arg := arg) (hf := hf) (ha := ha) (hs := hs))
+  | appAP {E Γ Δ X b fn arg} {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X}
+      {hs : Γ ++ Δ = E} :
+      ConsumingPrem (Prem.appAP (Γ := Γ) (Δ := Δ) (X := X) (b := b) (fn := fn)
+        (arg := arg) (hf := hf) (ha := ha) (hs := hs))
+  | leteTP {E Γ₁ Γ₂ a b c' t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c'} {hs : Γ₁ ++ Γ₂ = E} :
+      ConsumingPrem (Prem.leteTP (Γ₁ := Γ₁) (Γ₂ := Γ₂) (a := a) (b := b) (c' := c')
+        (t := t) (body := body) (ht := ht) (hb := hb) (hs := hs))
+
+/-- The chase's root shape: a `[content]`-rooted unit tree has a
+premise — it is headed by an app or a lete (every other rule is type-,
+context-, or linearity-blocked at `[content] ⊢ unit`). -/
+theorem root_unit_prem : ∀ (t : Term) (h : Typed [Ty.content] t Ty.unit),
+    ∃ (Γ' : List Ty) (t' : Term) (τ' : Ty) (n' : Typed Γ' t' τ'), Prem h n' := by
+  intro t h
+  cases h with
+  | app hf ha hs => exact ⟨_, _, _, hf, Prem.appFP⟩
+  | lete ht hb hs => exact ⟨_, _, _, ht, Prem.leteTP⟩
+  | fix hΓ h =>
+      have hc : Ty.content.isLinear = false := hΓ 0 Ty.content rfl
+      simp only [Ty.isLinear] at hc
+      contradiction
+  | contr hk h =>
+      simp only [Ty.isLinear] at hk
+      contradiction
+  | weak hk h =>
+      simp only [Ty.isLinear] at hk
+      contradiction
+
+/-! ## The value-climb
+
+A value's term-occurrence climbs the parent chain through ride slots
+until a consuming slot — the corner's entry: from the introducer's
+λ-value to the fire that consumes it. -/
+
+/-- The root-reach chain: the climb's chain of ride slots from `n` up
+to a direct premise of the root (or the root itself) — the stuck case,
+which the corner's consumer refutes via the value's type. -/
+inductive RootReach {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀) :
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop where
+  | self : RootReach root root
+  | prem {Γ : List Ty} {t : Term} {τ : Ty} (n : Typed Γ t τ) (s : Prem root n) :
+      RootReach root n
+  | up {E : List Ty} {tc : Term} {τc : Ty} {c : Typed E tc τc}
+      {Γ : List Ty} {t : Term} {τ : Ty} {n : Typed Γ t τ}
+      (s : Prem c n) (r : RootReach root c) : RootReach root n
+
+/-- THE RIDE-CLIMB: from any node on a path, climbing through ride
+slots reaches a consuming slot — unless the chain rides into the root
+(the `RootReach` case). The recursion is structural on the `Path`
+certificate: each ride step's recursive call is at a strict prefix. -/
+theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {Γ : List Ty} {t : Term} {τ : Ty} {n : Typed Γ t τ} (hp : Path root n),
+    (∃ (E' : List Ty) (tc' : Term) (τc' : Ty) (c : Typed E' tc' τc') (hpc : Path root c)
+        (s : Prem c n), ConsumingPrem s)
+    ∨ (∃ (E' : List Ty) (tc' : Term) (τc' : Ty) (c : Typed E' tc' τc')
+        (Γ₀' : List Ty) (t₀' : Term) (τ₀' : Ty) (n₀ : Typed Γ₀' t₀' τ₀')
+        (hpc : Path root c) (s : Prem c n₀), ConsumingPrem s ∧ Sub n₀ n)
+    ∨ RootReach root n := by
+  intro t₀ root hrf hrm Γ t τ n hp
+  induction hp with
+  | here => exact Or.inr (Or.inr RootReach.self)
+  | step p s ih =>
+      match s with
+      | @Prem.appFP E' Γ' Δ X b fn arg hf ha hs =>
+          exact Or.inl ⟨E', Term.app fn arg, b, Typed.app hf ha hs, p, Prem.appFP,
+            ConsumingPrem.appFP⟩
+      | @Prem.appAP E' Γ' Δ X b fn arg hf ha hs =>
+          exact Or.inl ⟨E', Term.app fn arg, b, Typed.app hf ha hs, p, Prem.appAP,
+            ConsumingPrem.appAP⟩
+      | @Prem.leteTP E' Γ₁ Γ₂ a b c' t' body ht hb hs =>
+          exact Or.inl ⟨E', Term.lete t' body, c', Typed.lete ht hb hs, p, Prem.leteTP,
+            ConsumingPrem.leteTP⟩
+      | @Prem.lamP E' a b body h =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.lam a body, Ty.arrow a b,
+              Typed.lam h, hpc', s', ⟨hcons, sub_of_prem Prem.lamP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.lamP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.lamP hreach))
+      | @Prem.pairLP E' Γ' Δ a b l r hl hr hs =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.pair l r, Ty.tensor a b,
+              Typed.pair hl hr hs, hpc', s', ⟨hcons, sub_of_prem Prem.pairLP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.pairLP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.pairLP hreach))
+      | @Prem.pairRP E' Γ' Δ a b l r hl hr hs =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.pair l r, Ty.tensor a b,
+              Typed.pair hl hr hs, hpc', s', ⟨hcons, sub_of_prem Prem.pairRP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.pairRP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.pairRP hreach))
+      | @Prem.nextP E' a t' h =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.next t', Ty.later a, Typed.next h,
+              hpc', s', ⟨hcons, sub_of_prem Prem.nextP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.nextP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.nextP hreach))
+      | @Prem.fixP E' a body hΓ h =>
+          -- a fix node on the path contradicts the clean counters
+          have hfc := (Path_clean root p hrf hrm).1
+          simp only [fixCount] at hfc
+          omega
+      | @Prem.consHP E' Γ' Δ hd tl hc ht hs =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.cons hd tl, Ty.stream,
+              Typed.cons hc ht hs, hpc', s', ⟨hcons, sub_of_prem Prem.consHP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.consHP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.consHP hreach))
+      | @Prem.consTP E' Γ' Δ hd tl hc ht hs =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.cons hd tl, Ty.stream,
+              Typed.cons hc ht hs, hpc', s', ⟨hcons, sub_of_prem Prem.consTP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.consTP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.consTP hreach))
+      | @Prem.snocTP E' Γ' Δ t' u ht hu hs =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.snoc t' u, Ty.trace,
+              Typed.snoc ht hu hs, hpc', s', ⟨hcons, sub_of_prem Prem.snocTP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.snocTP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.snocTP hreach))
+      | @Prem.snocUP E' Γ' Δ t' u ht hu hs =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.snoc t' u, Ty.trace,
+              Typed.snoc ht hu hs, hpc', s', ⟨hcons, sub_of_prem Prem.snocUP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.snocUP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.snocUP hreach))
+      | @Prem.contrP E' k t' τ' hk h =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', k :: E', t', τ', Typed.contr hk h,
+              hpc', s', ⟨hcons, sub_of_prem Prem.contrP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.contrP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.contrP hreach))
+      | @Prem.weakP E' k t' τ' hk h =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', k :: E', Term.liftAt 0 t', τ', Typed.weak hk h,
+              hpc', s', ⟨hcons, sub_of_prem Prem.weakP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.weakP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.weakP hreach))
+      | @Prem.leteBP E' Γ₁ Γ₂ a b c'' t' body ht hb hs =>
+          rcases ih with
+            ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
+          | ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀, hpc', s', hcons, hsub⟩
+          | hreach
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', E', Term.lete t' body, c'',
+              Typed.lete ht hb hs, hpc', s', ⟨hcons, sub_of_prem Prem.leteBP⟩⟩)
+          · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
+              hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.leteBP)⟩⟩)
+          · exact Or.inr (Or.inr (RootReach.up Prem.leteBP hreach))
+
 end Dcare
