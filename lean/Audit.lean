@@ -140,3 +140,4 @@ Rules:
 #print axioms Dcare.config_arg_lam_killer
 #print axioms Dcare.killer_step
 #print axioms Dcare.config_lete_elim
+#print axioms Dcare.uses_sub_ge_or_binder

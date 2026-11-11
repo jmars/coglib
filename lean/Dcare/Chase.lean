@@ -595,6 +595,331 @@ theorem killer_step {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
     have h2 : size (Typed.lam hb) < size (Typed.app (Typed.lam hb) ha hs) := Prem_size Prem.appFP
     omega
 
+/-! ## The freshness engine
+
+The position-lifting half of the chase's freshness facts (obs 130's
+statement, the 30-case `Sub` map): a used position of a subderivation's
+context either is supplied by the ancestor's own context or was
+INTRODUCED by a λ-domain / lete-component at-or-above the subderivation.
+The introducer is where the position's value was bound — the target of
+every corner/TOP analysis. -/
+
+/-- A used position of `d`'s context lifts to `h`'s context, or was
+introduced by a binder `β` with `Sub β d`. Induction on the `Sub`
+certificate: split frames lift the position by prefix/suffix arithmetic
+(the `prem_position` idiom), binder frames introduce at positions 0/1,
+`contr`/`weak` map positions, and wrapping arms thread the IH. -/
+theorem uses_sub_ge_or_binder : ∀ {Γ₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {h : Typed Γ₁ t₁ τ₁}
+    {Γ₂ : List Ty} {t₂ : Term} {τ₂ : Ty} {d : Typed Γ₂ t₂ τ₂}, Sub h d →
+    ∀ (i : Nat) (A : Ty), Γ₂[i]? = some A → uses d i ≥ 1 →
+    (∃ (j : Nat), Γ₁[j]? = some A ∧ uses h j ≥ 1)
+    ∨ (∃ (Eβ : List Ty) (tβ : Term) (τβ : Ty) (β : Typed Eβ tβ τβ),
+        Introduces β A ∧ Sub β d) := by
+  intro Γ₁ t₁ τ₁ h Γ₂ t₂ τ₂ d hs
+  induction hs with
+  | @lam Γ' a' b' body' h' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · cases j with
+        | zero =>
+            rw [List.get?_zero_cons'] at hj
+            injection hj with hA
+            subst hA
+            exact Or.inr ⟨_, _, _, Typed.lam h', Introduces.lamI h', Sub.lam s⟩
+        | succ m =>
+            rw [List.get?_succ_cons'] at hj
+            exact Or.inl ⟨m, hj, by simpa only [uses] using huj⟩
+      · exact Or.inr hβ
+  | @appL E' Γ' Δ' a' b' fn' arg' hf' ha' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · have hlt : j < Γ'.length := List.get?_some_lt hj
+        refine Or.inl ⟨j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_lt hlt]
+          exact hj
+        · simpa only [uses, if_pos hlt] using huj
+      · exact Or.inr hβ
+  | @appR E' Γ' Δ' a' b' fn' arg' hf' ha' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · refine Or.inl ⟨Γ'.length + j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length j), Nat.add_sub_cancel_left]
+          exact hj
+        · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length j)),
+            Nat.add_sub_cancel_left] using huj
+      · exact Or.inr hβ
+  | @pairL E' Γ' Δ' a' b' l' r' hl' hr' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · have hlt : j < Γ'.length := List.get?_some_lt hj
+        refine Or.inl ⟨j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_lt hlt]
+          exact hj
+        · simpa only [uses, if_pos hlt] using huj
+      · exact Or.inr hβ
+  | @pairR E' Γ' Δ' a' b' l' r' hl' hr' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · refine Or.inl ⟨Γ'.length + j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length j), Nat.add_sub_cancel_left]
+          exact hj
+        · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length j)),
+            Nat.add_sub_cancel_left] using huj
+      · exact Or.inr hβ
+  | @leteT E' Γ₁' Γ₂' a' b' c' t' body' ht' hb' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · have hlt : j < Γ₁'.length := List.get?_some_lt hj
+        refine Or.inl ⟨j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_lt hlt]
+          exact hj
+        · simpa only [uses, if_pos hlt] using huj
+      · exact Or.inr hβ
+  | @leteB E' Γ₁' Γ₂' a' b' c' t' body' ht' hb' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · cases j with
+        | zero =>
+            rw [List.get?_zero_cons'] at hj
+            injection hj with hA
+            subst hA
+            exact Or.inr ⟨_, _, _, Typed.lete ht' hb' hs', Introduces.leteIY, Sub.leteB s⟩
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hj
+                injection hj with hA
+                subst hA
+                exact Or.inr ⟨_, _, _, Typed.lete ht' hb' hs', Introduces.leteIX, Sub.leteB s⟩
+            | succ m' =>
+                rw [List.get?_add_two] at hj
+                refine Or.inl ⟨Γ₁'.length + m', ?_, ?_⟩
+                · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ₁'.length m'),
+                    Nat.add_sub_cancel_left]
+                  exact hj
+                · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ₁'.length m')),
+                    Nat.add_sub_cancel_left] using huj
+      · exact Or.inr hβ
+  | @next Γ' a' t' h' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · exact Or.inl ⟨j, hj, by simpa only [uses] using huj⟩
+      · exact Or.inr hβ
+  | @fix Γ' a' body' hΓ' h' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · exact Or.inl ⟨j, hj, by simpa only [uses] using huj⟩
+      · exact Or.inr hβ
+  | @consH E' Γ' Δ' hd' tl' hc' ht' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · have hlt : j < Γ'.length := List.get?_some_lt hj
+        refine Or.inl ⟨j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_lt hlt]
+          exact hj
+        · simpa only [uses, if_pos hlt] using huj
+      · exact Or.inr hβ
+  | @consT E' Γ' Δ' hd' tl' hc' ht' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · refine Or.inl ⟨Γ'.length + j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length j), Nat.add_sub_cancel_left]
+          exact hj
+        · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length j)),
+            Nat.add_sub_cancel_left] using huj
+      · exact Or.inr hβ
+  | @snocT E' Γ' Δ' t' u' ht' hu' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · have hlt : j < Γ'.length := List.get?_some_lt hj
+        refine Or.inl ⟨j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_lt hlt]
+          exact hj
+        · simpa only [uses, if_pos hlt] using huj
+      · exact Or.inr hβ
+  | @snocU E' Γ' Δ' t' u' ht' hu' hs' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · refine Or.inl ⟨Γ'.length + j, ?_, ?_⟩
+        · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length j), Nat.add_sub_cancel_left]
+          exact hj
+        · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length j)),
+            Nat.add_sub_cancel_left] using huj
+      · exact Or.inr hβ
+  | @contr Γ' k' t' τ' hk' h' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · cases j with
+        | zero =>
+            rw [List.get?_zero_cons'] at hj
+            injection hj with hA
+            subst hA
+            refine Or.inl ⟨0, List.get?_zero_cons', ?_⟩
+            show (if (0 : Nat) = 0 then uses h' 0 + uses h' 1 else uses h' (0 + 1)) ≥ 1
+            rw [if_pos rfl]
+            exact Nat.le_trans huj (Nat.le_add_right (uses h' 0) (uses h' 1))
+        | succ m =>
+            cases m with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hj
+                injection hj with hA
+                subst hA
+                refine Or.inl ⟨0, List.get?_zero_cons', ?_⟩
+                show (if (0 : Nat) = 0 then uses h' 0 + uses h' 1 else uses h' (0 + 1)) ≥ 1
+                rw [if_pos rfl]
+                exact Nat.le_trans huj (Nat.le_add_left (uses h' 1) (uses h' 0))
+            | succ m' =>
+                rw [List.get?_add_two] at hj
+                refine Or.inl ⟨m' + 1, ?_, ?_⟩
+                · rw [List.get?_succ_cons']
+                  exact hj
+                · simpa only [uses, if_neg (Nat.succ_ne_zero m')] using huj
+      · exact Or.inr hβ
+  | @weak Γ' k' t' τ' hk' h' Γ₂' t₂' τ₂' d' s ih =>
+      intro i A hpos hu
+      rcases ih i A hpos hu with ⟨j, hj, huj⟩ | hβ
+      · refine Or.inl ⟨j + 1, ?_, ?_⟩
+        · rw [List.get?_succ_cons']
+          exact hj
+        · simpa only [uses, if_neg (Nat.succ_ne_zero j), Nat.add_sub_cancel] using huj
+      · exact Or.inr hβ
+  | @lamD Γ' a' b' body' h' =>
+      intro i A hpos hu
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with hA
+          subst hA
+          exact Or.inr ⟨_, _, _, Typed.lam h', Introduces.lamI h', Sub.lamD⟩
+      | succ m =>
+          rw [List.get?_succ_cons'] at hpos
+          exact Or.inl ⟨m, hpos, by simpa only [uses] using hu⟩
+  | @appLD E' Γ' Δ' a' b' fn' arg' hf' ha' hs' =>
+      intro i A hpos hu
+      have hlt : i < Γ'.length := List.get?_some_lt hpos
+      refine Or.inl ⟨i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_lt hlt]
+        exact hpos
+      · simpa only [uses, if_pos hlt] using hu
+  | @appRD E' Γ' Δ' a' b' fn' arg' hf' ha' hs' =>
+      intro i A hpos hu
+      refine Or.inl ⟨Γ'.length + i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length i), Nat.add_sub_cancel_left]
+        exact hpos
+      · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length i)),
+          Nat.add_sub_cancel_left] using hu
+  | @pairLD E' Γ' Δ' a' b' l' r' hl' hr' hs' =>
+      intro i A hpos hu
+      have hlt : i < Γ'.length := List.get?_some_lt hpos
+      refine Or.inl ⟨i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_lt hlt]
+        exact hpos
+      · simpa only [uses, if_pos hlt] using hu
+  | @pairRD E' Γ' Δ' a' b' l' r' hl' hr' hs' =>
+      intro i A hpos hu
+      refine Or.inl ⟨Γ'.length + i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length i), Nat.add_sub_cancel_left]
+        exact hpos
+      · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length i)),
+          Nat.add_sub_cancel_left] using hu
+  | @leteTD E' Γ₁' Γ₂' a' b' c' t' body' ht' hb' hs' =>
+      intro i A hpos hu
+      have hlt : i < Γ₁'.length := List.get?_some_lt hpos
+      refine Or.inl ⟨i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_lt hlt]
+        exact hpos
+      · simpa only [uses, if_pos hlt] using hu
+  | @leteBD E' Γ₁' Γ₂' a' b' c' t' body' ht' hb' hs' =>
+      intro i A hpos hu
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with hA
+          subst hA
+          exact Or.inr ⟨_, _, _, Typed.lete ht' hb' hs', Introduces.leteIY, Sub.leteBD⟩
+      | succ m =>
+          cases m with
+          | zero =>
+              rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+              injection hpos with hA
+              subst hA
+              exact Or.inr ⟨_, _, _, Typed.lete ht' hb' hs', Introduces.leteIX, Sub.leteBD⟩
+          | succ m' =>
+              rw [List.get?_add_two] at hpos
+              refine Or.inl ⟨Γ₁'.length + m', ?_, ?_⟩
+              · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ₁'.length m'),
+                  Nat.add_sub_cancel_left]
+                exact hpos
+              · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ₁'.length m')),
+                  Nat.add_sub_cancel_left] using hu
+  | @nextD Γ' a' t' h' =>
+      intro i A hpos hu
+      exact Or.inl ⟨i, hpos, by simpa only [uses] using hu⟩
+  | @fixD Γ' a' body' hΓ' h' =>
+      intro i A hpos hu
+      exact Or.inl ⟨i, hpos, by simpa only [uses] using hu⟩
+  | @consHD E' Γ' Δ' hd' tl' hc' ht' hs' =>
+      intro i A hpos hu
+      have hlt : i < Γ'.length := List.get?_some_lt hpos
+      refine Or.inl ⟨i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_lt hlt]
+        exact hpos
+      · simpa only [uses, if_pos hlt] using hu
+  | @consTD E' Γ' Δ' hd' tl' hc' ht' hs' =>
+      intro i A hpos hu
+      refine Or.inl ⟨Γ'.length + i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length i), Nat.add_sub_cancel_left]
+        exact hpos
+      · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length i)),
+          Nat.add_sub_cancel_left] using hu
+  | @snocTD E' Γ' Δ' t' u' ht' hu' hs' =>
+      intro i A hpos hu
+      have hlt : i < Γ'.length := List.get?_some_lt hpos
+      refine Or.inl ⟨i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_lt hlt]
+        exact hpos
+      · simpa only [uses, if_pos hlt] using hu
+  | @snocUD E' Γ' Δ' t' u' ht' hu' hs' =>
+      intro i A hpos hu
+      refine Or.inl ⟨Γ'.length + i, ?_, ?_⟩
+      · rw [← hs', List.get?_append_ge (Nat.le_add_right Γ'.length i), Nat.add_sub_cancel_left]
+        exact hpos
+      · simpa only [uses, if_neg (Nat.not_lt.mpr (Nat.le_add_right Γ'.length i)),
+          Nat.add_sub_cancel_left] using hu
+  | @contrD Γ' k' t' τ' hk' h' =>
+      intro i A hpos hu
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with hA
+          subst hA
+          refine Or.inl ⟨0, List.get?_zero_cons', ?_⟩
+          show (if (0 : Nat) = 0 then uses h' 0 + uses h' 1 else uses h' (0 + 1)) ≥ 1
+          rw [if_pos rfl]
+          exact Nat.le_trans hu (Nat.le_add_right (uses h' 0) (uses h' 1))
+      | succ m =>
+          cases m with
+          | zero =>
+              rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+              injection hpos with hA
+              subst hA
+              refine Or.inl ⟨0, List.get?_zero_cons', ?_⟩
+              show (if (0 : Nat) = 0 then uses h' 0 + uses h' 1 else uses h' (0 + 1)) ≥ 1
+              rw [if_pos rfl]
+              exact Nat.le_trans hu (Nat.le_add_left (uses h' 1) (uses h' 0))
+          | succ m' =>
+              rw [List.get?_add_two] at hpos
+              refine Or.inl ⟨m' + 1, ?_, ?_⟩
+              · rw [List.get?_succ_cons']
+                exact hpos
+              · simpa only [uses, if_neg (Nat.succ_ne_zero m')] using hu
+  | @weakD Γ' k' t' τ' hk' h' =>
+      intro i A hpos hu
+      refine Or.inl ⟨i + 1, ?_, ?_⟩
+      · rw [List.get?_succ_cons']
+        exact hpos
+      · simpa only [uses, if_neg (Nat.succ_ne_zero i), Nat.add_sub_cancel] using hu
+
 /-- READ-CONFIG, the read is a `lete`'s SCRUTINEE: the piece's type is
 `tensor x y` with a positive trace-net — so some component is
 trace-net-positive; the component is a binder of the body's context
