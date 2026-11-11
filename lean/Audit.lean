@@ -138,3 +138,4 @@ Rules:
 #print axioms Dcare.introducer_of_positive
 #print axioms Dcare.config_fn_positive_arg
 #print axioms Dcare.config_arg_lam_killer
+#print axioms Dcare.killer_step

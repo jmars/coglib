@@ -558,4 +558,41 @@ theorem config_arg_lam_killer {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.u
     have h2 : size (Typed.lam hb) < size (Typed.app (Typed.lam hb) ha hs) := Prem_size Prem.appFP
     omega
 
+/-- THE CHAIN MOVE at the positive-domain class: the read (a var-read of
+`T = arrow b σ` with `tnet b > 0`) consumed as a λ-headed fire's ARGUMENT
+— the killer's λ has domain `T` exactly, so the killer's body spends
+position 0 of the SAME type `T` (TYPE-STABLE: the killer-of-killer
+regression does not grow types). The body's position-0 spend is exactly
+one (M2 — the binder is linear because `b` is trace-carrying, hence
+linear, hence so is `arrow b σ`). This is `config_arg_lam_killer` with
+the class hypothesis in place of `tnet T > 0` — the sign of `tnet T`
+itself is UNKNOWN at the corner (the killed type there is the
+introducer's own arrow type), which is exactly why the chain carries the
+DOMAIN-sign rather than the whole-type sign. -/
+theorem killer_step {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {E Γ : List Ty} {T b σ : Ty} {body : Term}
+    {hb : Typed (T :: Γ) body σ} {ha : Typed [T] (Term.var 0) T}
+    {hs : Γ ++ [T] = E}
+    (hp : Path root (Typed.app (Typed.lam hb) ha hs))
+    (hT : T = Ty.arrow b σ) (htb : tnet b > 0) :
+    Path root hb ∧ fixCount hb = 0 ∧ mintCount hb = 0 ∧
+      (T :: Γ)[0]? = some T ∧ uses hb 0 ≥ 1 ∧
+      size hb < size (Typed.app (Typed.lam hb) ha hs) := by
+  have hblin : b.isLinear = true := by
+    rcases Bool.eq_false_or_eq_true b.isLinear with h | h
+    · exact h
+    · rw [nonlinear_tnet b h] at htb; omega
+  have hTlin : T.isLinear = true := by
+    rw [hT]; simp only [Ty.isLinear, hblin, Bool.true_or]
+  have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+  obtain ⟨hfcf, hmcf⟩ := Prem_clean (Prem.appFP (ha := ha)) hfc hmc
+  obtain ⟨hfcb, hmcb⟩ := Prem_clean (Prem.lamP (h := hb)) hfcf hmcf
+  refine ⟨Path.step (Path.step hp Prem.appFP) Prem.lamP, hfcb, hmcb,
+    List.get?_zero_cons', ?_, ?_⟩
+  · exact Nat.le_of_eq (Eq.symm (single_linear_use hb 0 T List.get?_zero_cons' hTlin))
+  · have h1 : size hb < size (Typed.lam hb) := Prem_size Prem.lamP
+    have h2 : size (Typed.lam hb) < size (Typed.app (Typed.lam hb) ha hs) := Prem_size Prem.appFP
+    omega
+
 end Dcare
