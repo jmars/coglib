@@ -2462,13 +2462,15 @@ inductive ChainExit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit) (T : 
       (hpc : Path root c) (s : Prem c n₀) (hcons : ConsumingPrem s)
       (hsub : Sub n₀ d') : ChainExit root T
   | rideReach {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
-      (hreach : RootReach root d') : ChainExit root T
+      (hp : Path root d') (hreach : RootReach root d') : ChainExit root T
   | top {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
-      (hcΓ : Γd = [T]) (htv : td = Term.var 0) (hcτ : τd = T) : ChainExit root T
+      (hcΓ : Γd = [T]) (htv : td = Term.var 0) (hcτ : τd = T)
+      {Ec : List Ty} {tc : Term} {τc : Ty} (c : Typed Ec tc τc)
+      (hpc : Path root c) (s : Prem c d') (hsub : Sub c d') : ChainExit root T
   | varFn {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
       {Γf : List Ty} {v : Typed [T] (Term.var 0) T} {hs : Γf ++ [T] = Γd}
       {hf : Typed Γf (Term.var 0) (Ty.arrow T τd)}
-      (ht : tnet τd ≤ 0) : ChainExit root T
+      (hp : Path root d') (ht : tnet τd ≤ 0) : ChainExit root T
   | spineLam {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
       {Γf : List Ty} {Δa : List Ty} {Wb σb : Ty} {body arg : Term}
       {hb : Typed (Wb :: Γf) body σb} {ha : Typed Δa arg Wb}
@@ -2513,7 +2515,7 @@ theorem spine_exit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       (E : List Ty) (hs : Γg ++ Γu = E),
     Path root (Typed.app g hu' hs) → Sub d (Typed.app g hu' hs) →
     ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d' : Typed Γd' td' τd'),
-      ChainExit root T := by
+      size d' ≤ size d ∧ ChainExit root T := by
   intro n Γg gt W T' σ' g hn Γu u' hu' E hs hp hsub
   by_cases hW : tnet W > 0
   · have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
@@ -2522,6 +2524,7 @@ theorem spine_exit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
     obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
       introducer_of_positive (Path.step hp Prem.appAP) j b' hpos htb
     exact ⟨Γu, u', W, hu',
+      (by have h1 := Sub_size (Sub_trans hsub Sub.appRD); omega),
       ChainExit.pos hu' hW hpos htb hu hfca hmca (Path.step hp Prem.appAP)
         SubEq.refl hpβ hint sβ⟩
   · have hW' : tnet W ≤ 0 := by omega
@@ -2531,15 +2534,16 @@ theorem spine_exit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
         introducer_of_positive hp j b' hpos htb
       exact ⟨E, Term.app gt u', .arrow T' σ', Typed.app g hu' hs,
+        (by exact Nat.le_of_lt (Sub_size hsub)),
         ChainExit.pos (Typed.app g hu' hs) hc hpos htb hu hfc hmc hp
           SubEq.refl hpβ hint sβ⟩
     · have hc' : tnet (.arrow T' σ') ≤ 0 := by omega
       cases g with
       | var =>
-          exact ⟨Γd, td, τd, d,
+          exact ⟨Γd, td, τd, d, Nat.le_refl _,
             ChainExit.spineVar d hp hsub hc'⟩
       | lam hb =>
-          exact ⟨Γd, td, τd, d,
+          exact ⟨Γd, td, τd, d, Nat.le_refl _,
             ChainExit.spineLam d hp hsub hW' hc'⟩
       | app hg ha hs₁ =>
           exact spine_exit root hrf hrm d T n hg
@@ -2550,6 +2554,7 @@ theorem spine_exit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       | lete ht hb hs₁ =>
           exact ⟨_, _, _,
             Typed.app (Typed.lete ht hb hs₁) hu' hs,
+            (by exact Nat.le_of_lt (Sub_size hsub)),
             ChainExit.killerOther (Typed.app (Typed.lete ht hb hs₁) hu' hs)
               (Typed.lete ht hb hs₁) hu' hs hp SubEq.refl⟩
       | fix hΓ h =>
@@ -2561,11 +2566,13 @@ theorem spine_exit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       | contr hk h =>
           exact ⟨_, _, _,
             Typed.app (Typed.contr hk h) hu' hs,
+            (by exact Nat.le_of_lt (Sub_size hsub)),
             ChainExit.killerOther (Typed.app (Typed.contr hk h) hu' hs)
               (Typed.contr hk h) hu' hs hp SubEq.refl⟩
       | weak hk h =>
           exact ⟨_, _, _,
             Typed.app (Typed.weak hk h) hu' hs,
+            (by exact Nat.le_of_lt (Sub_size hsub)),
             ChainExit.killerOther (Typed.app (Typed.weak hk h) hu' hs)
               (Typed.weak hk h) hu' hs hp SubEq.refl⟩
 
@@ -2616,12 +2623,12 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       size d' < size d →
       ∀ (hp' : Path root d') (i' : Nat), Γ'[i']? = some T → uses d' i' ≥ 1 →
       ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d'' : Typed Γd' td' τd'),
-        ChainExit root T) :
+        size d'' ≤ size d' ∧ ChainExit root T) :
     ∀ {Γv : List Ty} {tv : Term} {τv : Ty} (v : Typed Γv tv τv), Prem d v →
     tv = Term.var 0 → Γv = [τv] → τv = T →
     ∀ (i : Nat), Γ[i]? = some T → uses d i ≥ 1 →
     ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d' : Typed Γd' td' τd'),
-      ChainExit root T := by
+      size d' ≤ size d ∧ ChainExit root T := by
   intro Γv tv τv v s htv hcΓv hτv i hpos hu
   match s with
   | @Prem.appFP E' Γf Δ X b' fn arg hf ha hs =>
@@ -2634,6 +2641,7 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
         introducer_of_positive (Path.step hp Prem.appAP) j b'' hposj htb''
       exact ⟨Δ, arg, X, ha,
+        (by exact Nat.le_of_lt (Prem_size (Prem.appAP (hf := hf) (ha := ha) (hs := hs)))),
         ChainExit.pos ha hXb hposj htb'' huj hfca hmca
           (Path.step hp Prem.appAP) SubEq.refl hpβ hint sβ⟩
   | @Prem.appAP E' Γf Δ X b' fn arg hf ha hs =>
@@ -2644,8 +2652,8 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
             ⟨hpb, hfcb, hmcb, hposb, hub, hszb⟩
           rcases hrec (by rw [size_app] at hszb ⊢; omega) hpb 0
               (by rw [← hτv]; exact hposb) hub with
-            ⟨Γd', td', τd', d', hexit⟩
-          exact ⟨Γd', td', τd', d', hexit⟩
+            ⟨Γd', td', τd', d', hsd, hexit⟩
+          exact ⟨Γd', td', τd', d', by omega, hexit⟩
       | var =>
           by_cases hcb : tnet b' > 0
           · obtain ⟨j, b'', hposj, htb'', huj⟩ :=
@@ -2653,12 +2661,14 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
             obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
               introducer_of_positive hp j b'' hposj htb''
             exact ⟨E', Term.app (Term.var 0) arg, b', Typed.app Typed.var ha hs,
+              Nat.le_refl _,
               ChainExit.pos (d' := Typed.app Typed.var ha hs) (hw := Typed.app Typed.var ha hs)
                 hcb hposj htb'' huj hfc hmc hp SubEq.refl hpβ hint sβ⟩
           · exact ⟨E', Term.app (Term.var 0) arg, b', Typed.app Typed.var ha hs,
+              Nat.le_refl _,
               ChainExit.varFn (d' := Typed.app Typed.var ha hs)
                 (v := hτv ▸ (hcΓv ▸ (htv ▸ ha))) (hs := hτv ▸ (hcΓv ▸ hs))
-                (hf := hτv ▸ Typed.var) (by omega)⟩
+                (hf := hτv ▸ Typed.var) hp (by omega)⟩
       | app hg ha' hs₁ =>
           exact spine_exit root hrf hrm (Typed.app (Typed.app hg ha' hs₁) ha hs) T
             (size hg) hg (Nat.le_refl _) ha' Γf hs₁
@@ -2680,14 +2690,17 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
           cases (hτv.trans hT)
       | lete ht hb hs' =>
           exact ⟨E', _, _, Typed.app (Typed.lete ht hb hs') ha hs,
+              Nat.le_refl _,
             ChainExit.killerOther (Typed.app (Typed.lete ht hb hs') ha hs)
               (Typed.lete ht hb hs') ha hs hp SubEq.refl⟩
       | contr hk h =>
           exact ⟨E', _, _, Typed.app (Typed.contr hk h) ha hs,
+              Nat.le_refl _,
             ChainExit.killerOther (Typed.app (Typed.contr hk h) ha hs)
               (Typed.contr hk h) ha hs hp SubEq.refl⟩
       | weak hk h =>
           exact ⟨E', _, _, Typed.app (Typed.weak hk h) ha hs,
+              Nat.le_refl _,
             ChainExit.killerOther (Typed.app (Typed.weak hk h) ha hs)
               (Typed.weak hk h) ha hs hp SubEq.refl⟩
   | @Prem.pairLP E' Γf Δ x y l r hl hr hs =>
@@ -2696,22 +2709,28 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       | ⟨Ec, tc, τc, c, Γ₀, t₀, τ₀, n₀, hpc, sc, hcons, hsub⟩
       | hreach
       · exact ⟨E', _, _, Typed.pair hl hr hs,
+          Nat.le_refl _,
           ChainExit.ride1 (Typed.pair hl hr hs) hpc sc hcons⟩
       · exact ⟨E', _, _, Typed.pair hl hr hs,
+          Nat.le_refl _,
           ChainExit.ride2 (Typed.pair hl hr hs) hpc sc hcons hsub⟩
       · exact ⟨E', _, _, Typed.pair hl hr hs,
-          ChainExit.rideReach (Typed.pair hl hr hs) hreach⟩
+          Nat.le_refl _,
+          ChainExit.rideReach (Typed.pair hl hr hs) hp hreach⟩
   | @Prem.pairRP E' Γf Δ x y l r hl hr hs =>
       rcases value_climb root hrf hrm hp with
         ⟨Ec, tc, τc, c, hpc, sc, hcons⟩
       | ⟨Ec, tc, τc, c, Γ₀, t₀, τ₀, n₀, hpc, sc, hcons, hsub⟩
       | hreach
       · exact ⟨E', _, _, Typed.pair hl hr hs,
+          Nat.le_refl _,
           ChainExit.ride1 (Typed.pair hl hr hs) hpc sc hcons⟩
       · exact ⟨E', _, _, Typed.pair hl hr hs,
+          Nat.le_refl _,
           ChainExit.ride2 (Typed.pair hl hr hs) hpc sc hcons hsub⟩
       · exact ⟨E', _, _, Typed.pair hl hr hs,
-          ChainExit.rideReach (Typed.pair hl hr hs) hreach⟩
+          Nat.le_refl _,
+          ChainExit.rideReach (Typed.pair hl hr hs) hp hreach⟩
   | @Prem.leteTP E' Γ₁ Γ₂ x y c' t' body ht hb hs =>
       rw [hT] at hτv
       cases hτv
@@ -2725,11 +2744,14 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
       | ⟨Ec, tc, τc, c, Γ₀, t₀, τ₀, n₀, hpc, sc, hcons, hsub⟩
       | hreach
       · exact ⟨E', _, _, Typed.next h,
+          Nat.le_refl _,
           ChainExit.ride1 (Typed.next h) hpc sc hcons⟩
       · exact ⟨E', _, _, Typed.next h,
+          Nat.le_refl _,
           ChainExit.ride2 (Typed.next h) hpc sc hcons hsub⟩
       · exact ⟨E', _, _, Typed.next h,
-          ChainExit.rideReach (Typed.next h) hreach⟩
+          Nat.le_refl _,
+          ChainExit.rideReach (Typed.next h) hp hreach⟩
   | @Prem.fixP E' a' body hnl h =>
       have hty : Ty.arrow (Ty.later a') a' = Ty.arrow b σ := hτv.trans hT
       have hcontra : (Ty.arrow (Ty.later a') a').isLinear = false :=
@@ -2785,8 +2807,9 @@ theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
                   (Path.step hp (Prem.weakP (hk := hk) (h := h))) 0
                   (hτv ▸ (hcΓv.symm ▸ List.get?_zero_cons'))
                   (by simpa only [uses, if_neg (by decide : ¬ (1 : Nat) = 0)] using hu) with
-                ⟨Γd', td', τd', d', hexit⟩
-              exact ⟨Γd', td', τd', d', hexit⟩
+                ⟨Γd', td', τd', d', hsd, hexit⟩
+              exact ⟨Γd', td', τd', d',
+                by have h1 := Prem_size (Prem.weakP (hk := hk) (h := h)); omega, hexit⟩
           | succ m =>
               rw [hcΓv, List.get?_succ_cons', List.get?_nil'] at hpos
               contradiction
@@ -2810,7 +2833,7 @@ theorem killer_chain {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
     ∀ (hp : Path root d) (i : Nat) (T : Ty), Γ[i]? = some T → uses d i ≥ 1 →
     ∀ {b σ : Ty}, T = Ty.arrow b σ → tnet b > 0 →
     ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d' : Typed Γd' td' τd'),
-      ChainExit root T := by
+      size d' ≤ size d ∧ ChainExit root T := by
   intro n
   induction n with
   | zero =>
@@ -2834,8 +2857,10 @@ theorem killer_chain {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
         rcases prem_position_class hprem htv hcΓv (b := b) (σ := σ) (hτv.trans hT) htb with
           ⟨iₚ, hposₚ, huₚ⟩ | ⟨hE, hlami⟩
         · have hposT : E[iₚ]? = some T := by rw [hτv] at hposₚ; exact hposₚ
-          exact ih (by have hs' := Sub_size hsub; omega) hp' iₚ T hposT huₚ hT htb
-        · exact ⟨Γ, t, τ, d,
+          rcases ih (by have hs' := Sub_size hsub; omega) hp' iₚ T hposT huₚ hT htb with
+            ⟨Γd', td', τd', d', hsd, hexit⟩
+          exact ⟨Γd', td', τd', d', by have h1 := Sub_size hsub; omega, hexit⟩
+        · exact ⟨Γ, t, τ, d, Nat.le_refl _,
             ChainExit.identityLam d hsub hE hlami⟩
       · obtain ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ := direct
         obtain ⟨a, hcΓ, hcτ⟩ := var_canonical v htv
@@ -2845,5 +2870,20 @@ theorem killer_chain {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
             ih (by omega) hp' i' T hpos' hu' hT htb)
           v hprem htv hcΓv hτv i hpos hu
       · obtain ⟨hcΓ, htv, hcτ, hi⟩ := top
-        exact ⟨Γ, t, τ, d, ChainExit.top d hcΓ htv hcτ⟩
+        obtain hloc | hroot := parent_locate root hp
+        · obtain ⟨Ec, tc, τc, c, hpc, s⟩ := hloc
+          have hsubc : Sub c d := sub_of_prem s
+          exact ⟨Γ, t, τ, d, Nat.le_refl _,
+            ChainExit.top d hcΓ htv hcτ c hpc s hsubc⟩
+        · obtain ⟨hΓ, ht, hτ⟩ := hroot
+          rw [hΓ] at hpos
+          cases i with
+          | zero =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with hTc
+              rw [hT] at hTc
+              cases hTc
+          | succ m =>
+              rw [List.get?_succ_cons', List.get?_nil'] at hpos
+              contradiction
 
