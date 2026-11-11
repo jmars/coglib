@@ -1,0 +1,178 @@
+import Dcare.Path
+import Dcare.Cut
+
+/-!
+# The chase: subject reduction along a path
+
+The on-demand-reduction engine (obs 82 (E), obs 88's S2): when the chase
+meets a linear redex, REDUCE — the tree shrinks, the cycle cannot re-form.
+This file is the congruence half: replacing a subderivation by one of the
+same type, equal counters, and size down by `k` rebuilds the whole tree
+with the same judgment type, equal counters, and size down by the same
+`k`.
+
+TWO frame classes are excluded from `BFree`, each for a measured reason:
+
+* FIX frames: the rebuild would need `AllNonLinear` of the replacement's
+  context, which no package carries (the fix layer, S5, revisits this
+  when fixes enter — and in the fix-free chase the counters exclude fix
+  frames anyway).
+
+* BINDER frames (`lam` premises, `lete` bodies, `contr` premises): the
+  frame re-binds the head of its premise's context, but the SPLICE
+  reorders the redex's context pieces (`Δa ++ Γf`), so when the binder's
+  piece reaches the redex's fn-side with a nonempty argument context, the
+  head moves and the constructor cannot re-apply — this calculus has no
+  exchange. The reduced TERM remains typable (the split rules admit the
+  rotated order), but finding that derivation is a RETYPING, not a
+  congruence — outside a package that carries only the derivation. S3's
+  design pass decides how the chase routes around binder-crossing
+  reductions.
+-/
+
+namespace Dcare
+
+/-- The paths an opaque replacement can be lifted along: concatenation
+and pass-through frames only. Inverting a `BFree` certificate exposes the
+frame structure directly — no premise-casing needed. -/
+inductive BFree {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (d : Typed Γ₀ t₀ τ₀) :
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → {r : Typed Γ t τ} → Path d r → Prop where
+  | here : BFree d Path.here
+  | appF {E Γ Δ X b fn arg} {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X}
+      {hs : Γ ++ Δ = E} {p : Path d (.app hf ha hs)} :
+      BFree d p → BFree d (Path.step p Prem.appFP)
+  | appA {E Γ Δ X b fn arg} {hf : Typed Γ fn (.arrow X b)} {ha : Typed Δ arg X}
+      {hs : Γ ++ Δ = E} {p : Path d (.app hf ha hs)} :
+      BFree d p → BFree d (Path.step p Prem.appAP)
+  | pairL {E Γ Δ a b l r₁} {hl : Typed Γ l a} {hr : Typed Δ r₁ b}
+      {hs : Γ ++ Δ = E} {p : Path d (.pair hl hr hs)} :
+      BFree d p → BFree d (Path.step p Prem.pairLP)
+  | pairR {E Γ Δ a b l r₁} {hl : Typed Γ l a} {hr : Typed Δ r₁ b}
+      {hs : Γ ++ Δ = E} {p : Path d (.pair hl hr hs)} :
+      BFree d p → BFree d (Path.step p Prem.pairRP)
+  | leteT {E Γ₁ Γ₂ a b c₁ t body} {ht : Typed Γ₁ t (.tensor a b)}
+      {hb : Typed (b :: a :: Γ₂) body c₁} {hs : Γ₁ ++ Γ₂ = E}
+      {p : Path d (.lete ht hb hs)} :
+      BFree d p → BFree d (Path.step p Prem.leteTP)
+  | next {E a t} {h : Typed E t a} {p : Path d (.next h)} :
+      BFree d p → BFree d (Path.step p Prem.nextP)
+  | consH {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} {p : Path d (.cons hc ht hs)} :
+      BFree d p → BFree d (Path.step p Prem.consHP)
+  | consT {E Γ Δ hd tl} {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} {p : Path d (.cons hc ht hs)} :
+      BFree d p → BFree d (Path.step p Prem.consTP)
+  | snocT {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} {p : Path d (.snoc ht hu hs)} :
+      BFree d p → BFree d (Path.step p Prem.snocTP)
+  | snocU {E Γ Δ t u} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} {p : Path d (.snoc ht hu hs)} :
+      BFree d p → BFree d (Path.step p Prem.snocUP)
+  | weak {E : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed E t τ} {p : Path d (.weak hk h)} :
+      BFree d p → BFree d (Path.step p Prem.weakP)
+
+/-- The congruence: a replacement package at a node on a `BFree` path
+lifts to a replacement package at the root. The rebuilt tree's contexts
+are free (the judgment type is preserved; contexts are the splice's
+business, not the congruence's). -/
+theorem rebuild_along : ∀ (k : Nat) {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty}
+    (d : Typed Γ₀ t₀ τ₀),
+    ∀ {Γr : List Ty} {tr : Term} {τr : Ty} (r : Typed Γr tr τr) (hp : Path d r),
+    BFree d hp →
+    ∀ {Γr' : List Ty} {tr' : Term} (r' : Typed Γr' tr' τr),
+    tsize tr' + k = tsize tr →
+    fixCount r' = fixCount r → mintCount r' = mintCount r →
+    ∃ (Γ₀' : List Ty) (t₀' : Term) (d' : Typed Γ₀' t₀' τ₀),
+      tsize t₀' + k = tsize t₀ ∧ fixCount d' = fixCount d ∧ mintCount d' = mintCount d := by
+  intro k Γ₀ t₀ τ₀ d
+  intro Γr tr τr r hp hbf
+  induction hbf with
+  | here =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ⟨Γr', tr', r', hsz, hfc', hmc'⟩
+  | @appF E Γ Δ X b fn arg hf ha hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.app r' ha rfl : Typed (Γr' ++ Δ) (Term.app tr' arg) b)
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @appA E Γ Δ X b fn arg hf ha hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.app hf r' rfl : Typed (Γ ++ Γr') (Term.app fn tr') b)
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @pairL E Γ Δ a b l r₁ hl hr hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.pair r' hr rfl :
+        Typed (Γr' ++ Δ) (Term.pair tr' r₁) (.tensor a b))
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @pairR E Γ Δ a b l r₁ hl hr hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.pair hl r' rfl :
+        Typed (Γ ++ Γr') (Term.pair l tr') (.tensor a b))
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @leteT E Γ₁ Γ₂ a b c₁ t body ht hb hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.lete r' hb rfl :
+        Typed (Γr' ++ Γ₂) (Term.lete tr' body) c₁)
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @next E a t h p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.next r' : Typed Γr' (Term.next tr') (.later a))
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @consH E Γ Δ hd tl hc ht hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.cons r' ht rfl :
+        Typed (Γr' ++ Δ) (Term.cons tr' tl) .stream)
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @consT E Γ Δ hd tl hc ht hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.cons hc r' rfl :
+        Typed (Γ ++ Γr') (Term.cons hd tr') .stream)
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @snocT E Γ Δ t u ht hu hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.snoc r' hu rfl :
+        Typed (Γr' ++ Δ) (Term.snoc tr' u) .trace)
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @snocU E Γ Δ t u ht hu hs p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.snoc ht r' rfl :
+        Typed (Γ ++ Γr') (Term.snoc t tr') .trace)
+        (by simp only [tsize]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+  | @weak E k' t τ hk h p hbf' ih =>
+      intro Γr' tr' r' hsz hfc' hmc'
+      exact ih (Typed.weak hk r' :
+        Typed (k' :: Γr') (Term.liftAt 0 tr') τ)
+        (by rw [liftAt_tsize 0 tr', liftAt_tsize 0 t]; omega)
+        (by simp only [fixCount]; omega) (by simp only [mintCount]; omega)
+
+/-- REDUCTION AT A LINEAR REDEX on a `BFree` chain: the fire consumes
+the λ and the leaf, the splice rebuilds the body, and the congruence
+lifts the package to the root — the tree survives with the same judgment
+type, equal counters, and its size down by exactly the three consumed
+nodes (fire + binder + leaf). This is the move that breaks every cycle
+the walkers could not escape: after the reduction the λs are GONE. -/
+theorem reduce_at {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (d : Typed Γ₀ t₀ τ₀)
+    {E Γf Δa : List Ty} {a b : Ty} {body arg : Term}
+    (hbody : Typed (a :: Γf) body b) (harg : Typed Δa arg a) (hs : Γf ++ Δa = E)
+    (hlin : a.isLinear = true) (hu : uses hbody 0 = 1)
+    (hp : Path d (@Typed.app E Γf Δa a b (Term.lam a body) arg (Typed.lam hbody) harg hs))
+    (hbf : BFree d hp) :
+    ∃ (Γ₀' : List Ty) (t₀' : Term) (d' : Typed Γ₀' t₀' τ₀),
+      tsize t₀' + 3 = tsize t₀ ∧
+      fixCount d' = fixCount d ∧ mintCount d' = mintCount d := by
+  obtain ⟨body', hbody', hsz, hfc₀, hmc₀⟩ := linear_beta_splice hbody harg hlin hu
+  refine rebuild_along 3 d _ hp hbf hbody' hsz ?_ ?_
+  · simp only [fixCount] at hfc₀ ⊢; omega
+  · simp only [mintCount] at hmc₀ ⊢; omega
+
+end Dcare

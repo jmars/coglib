@@ -1,3 +1,4 @@
+import Dcare.Chase
 import Dcare.T1
 import Dcare.T3
 import Dcare.T2
@@ -122,3 +123,5 @@ Rules:
 #print axioms Dcare.term_transport
 #print axioms Dcare.linear_cut
 #print axioms Dcare.linear_beta_splice
+#print axioms Dcare.rebuild_along
+#print axioms Dcare.reduce_at
