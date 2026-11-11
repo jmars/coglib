@@ -134,3 +134,7 @@ Rules:
 #print axioms Dcare.liftAt0_ne_var0
 #print axioms Dcare.var_canonical
 #print axioms Dcare.chase_step
+#print axioms Dcare.root_content_nonpos
+#print axioms Dcare.introducer_of_positive
+#print axioms Dcare.config_fn_positive_arg
+#print axioms Dcare.config_arg_lam_killer

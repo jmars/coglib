@@ -192,20 +192,48 @@ the accounting (`flowEq` turns the token into a sink-count), the
 sink-extraction (the killed premise with clean counters), and the two
 arithmetic origins (a tnet-positive spend under the trace premise; an
 snet-positive spend under the ▷stream tail). What remains is THE CHASE
-itself — killing a positive spent position at a clean node. Its two
-statements are pinned here exactly as the assembly needs them.
+itself — killing a positive spent position at a clean node.
+
+THE CHASE STATEMENTS ARE ROOT-CARRYING, and must be: the root-free form
+(this file's first pinning, interval 7) is REFUTED by
+`Typed.var : [trace] ⊢ var 0 : trace` — clean, position 0 tnet-positive,
+spent once. A positive position can only be impossible RELATIVE to a
+root that supplies nothing positive; the `[content]` context is exactly
+that profile (`root_content_nonpos` below), and the `Path` certificate
+is what lets `pos_introduced` turn a positive position into an
+introducer below the root. The unit-conclusion pin is the ride's
+root-kill (a tensor-typed value cannot be the root) and the
+lam-introducer's root-kill (a λ concludes an arrow).
 -/
+
+/-- The root's supply profile: `[content]` supplies no tnet-positive
+position — the one fact that makes an introducer mandatory for every
+positive position below the root. -/
+theorem root_content_nonpos : ∀ (j : Nat) (b : Ty), [Ty.content][j]? = some b → tnet b ≤ 0 := by
+  intro j b hpos
+  cases j with
+  | zero =>
+      rw [List.get?_zero_cons'] at hpos
+      injection hpos with hb
+      subst hb
+      simp [tnet]
+  | succ m =>
+      rw [List.get?_succ_cons', List.get?_nil'] at hpos
+      contradiction
 
 /-- `no_vanishing_fixfree` reduced to the chase: the trace-side and
 stream-side position-kills are the only missing pieces. The chase
-hypotheses are the honest S3 targets — see the module doc for the two
-open design problems (the BFree-blocked corner; the rides' freshness). -/
+hypotheses are the honest S3 targets — root-carrying, path-certified,
+against the `[content]` supply profile (see the module doc above for
+why the root-free form was refuted and re-pinned). -/
 theorem no_vanishing_fixfree_of_chase
-    (hchaseT : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (d : Typed Γ t τ),
-      fixCount d = 0 → mintCount d = 0 →
+    (hchaseT : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit),
+      fixCount root = 0 → mintCount root = 0 →
+      ∀ {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ}, Path root d →
       ∀ (i : Nat) (b : Ty), Γ[i]? = some b → tnet b > 0 → uses d i ≥ 1 → False)
-    (hchaseS : ∀ {Γ : List Ty} {t : Term} (d : Typed Γ t (.later Ty.stream)),
-      fixCount d = 0 → mintCount d = 0 →
+    (hchaseS : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit),
+      fixCount root = 0 → mintCount root = 0 →
+      ∀ {Γ : List Ty} {t : Term} {d : Typed Γ t (.later Ty.stream)}, Path root d →
       ∀ (i : Nat) (b : Ty), Γ[i]? = some b → snet b > 0 → uses d i ≥ 1 → False) :
     ∀ (t : Term) (h : Typed [Ty.content] t Ty.unit), fixCount h = 0 → False := by
   intro t h hf
@@ -219,13 +247,13 @@ theorem no_vanishing_fixfree_of_chase
     have h1 : (1 : Int) ≤ ↑(sinks h) := by omega
     exact_mod_cast h1
   obtain hsink | hsink := sinks_extract' h h Path.here hsinks hf hm
-  · obtain ⟨Γ', t', ht, _, hfc', hmc'⟩ := hsink
+  · obtain ⟨Γ', t', ht, hpath, hfc', hmc'⟩ := hsink
     obtain ⟨i, b, hpos, hpos', hu⟩ :=
       origin_lemma ht hfc' hmc' (by simp [tnet])
-    exact hchaseT ht hfc' hmc' i b hpos hpos' hu
-  · obtain ⟨Γ', t', htl, _, hfc', hmc'⟩ := hsink
+    exact hchaseT h hf hm hpath i b hpos hpos' hu
+  · obtain ⟨Γ', t', htl, hpath, hfc', hmc'⟩ := hsink
     obtain ⟨i, b, hpos, hpos', hu⟩ := stream_origin htl hfc'
-    exact hchaseS htl hfc' hmc' i b hpos hpos' hu
+    exact hchaseS h hf hm hpath i b hpos hpos' hu
 
 /-- Path concatenation. -/
 theorem Path_append {Γc : List Ty} {tc : Term} {τc : Ty} (c : Typed Γc tc τc)
@@ -426,7 +454,9 @@ theorem chase_step {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ
         fixCount d' = 0 ∧ mintCount d' = 0 ∧ size d' < size d)
     ∨ (∃ (E : List Ty) (tc : Term) (τc : Ty) (d' : Typed E tc τc) (hp' : Path root d')
         (hle : size d' ≤ size d) (Γv : List Ty) (tv : Term) (τv : Ty) (v : Typed Γv tv τv),
-        tv = Term.var 0 ∧ Γv = [τv] ∧ tnet τv > 0 ∧ Prem d' v)
+        tv = Term.var 0 ∧ Γv = [τv] ∧ tnet τv > 0 ∧ Prem d' v ∧
+        ((∃ (i' : Nat), E[i']? = some τv ∧ uses d' i' ≥ 1)
+         ∨ (E = [] ∧ ∃ (a' : Ty), tc = Term.lam a' (Term.var 0))))
     ∨ (Γ = [b] ∧ t = Term.var 0 ∧ τ = b ∧ i = 0) := by
   have hclean := Path_clean root hp hfc hmc
   rcases read_locate (size d) d (Nat.le_refl _) i b hpos hu with
@@ -440,18 +470,92 @@ theorem chase_step {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ
     have hp' : Path root p := Path_append d root (sub_path hsub) hp
     have hpc := Path_clean root hp' hfc hmc
     rcases prem_position (p := p) (v := v) hprem htv hcΓv hta with
-      ⟨iₚ, hposₚ, huₚ⟩ | ⟨hE, _⟩
+      ⟨iₚ, hposₚ, huₚ⟩ | ⟨hE, hlami⟩
     · refine Or.inl ⟨E, tp, τp, p, iₚ, τv, hp', hposₚ, hta, huₚ, hpc.1, hpc.2, ?_⟩
       exact Sub_size hsub
-    · refine Or.inr (Or.inl ⟨E, tp, τp, p, hp', Nat.le_of_lt (Sub_size hsub),
-        Γv, tv, τv, v, htv, hcΓv, hta, hprem⟩)
+    · -- the identity-λ config: the read IS the λ's body; the node spends
+      -- no position (its context is empty) — its own domain introduces.
+      refine Or.inr (Or.inl ⟨E, tp, τp, p, hp', Nat.le_of_lt (Sub_size hsub),
+        Γv, tv, τv, v, htv, hcΓv, hta, hprem, Or.inr ⟨hE, hlami⟩⟩)
   · -- DIRECT: the read is a premise of the state's own node — the config.
     obtain ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ := direct
     have hta : tnet τv > 0 := by rw [hτv]; exact htb
     obtain ⟨a, hcΓ, hcτ⟩ := var_canonical v htv
     have hcΓv : Γv = [τv] := hcτ ▸ hcΓ
-    exact Or.inr (Or.inl ⟨Γ, t, τ, d, hp, Nat.le_refl _, Γv, tv, τv, v, htv, hcΓv, hta, hprem⟩)
+    exact Or.inr (Or.inl ⟨Γ, t, τ, d, hp, Nat.le_refl _, Γv, tv, τv, v, htv, hcΓv, hta, hprem,
+      Or.inl ⟨i, by rw [hτv]; exact hpos, hu⟩⟩)
   · -- TOP: the node IS the read.
     exact Or.inr (Or.inr ‹_›)
+
+/-!
+## The config-side machinery
+
+`chase_step`'s descent loop is closed; what remains analyzes the
+READ-CONFIGS and TOP. The lemmas below are the DESCENT moves — stable
+under every payload design (they produce strictly smaller states of the
+same kind, no payload change). The ascent moves (the corner's
+introducer-consumer analysis; the rides) pay piece-fuel and are the
+payload-chase's subject.
+-/
+
+/-- Positive positions need introducers: under a `[content]`-rooted
+unit tree, every tnet-positive position at a path-reachable node was
+introduced by a binder (`λ`-domain or `lete`-component) containing the
+node. This is the entry move of every corner/TOP analysis. -/
+theorem introducer_of_positive {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d)
+    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (htb : tnet b > 0) :
+    ∃ (E' : List Ty) (tp : Term) (τp : Ty) (β : Typed E' tp τp),
+      Path root β ∧ Introduces β b ∧ Sub β d := by
+  rcases pos_introduced root hp i b hpos with ⟨j, hj⟩ | hintro
+  · exact absurd htb (by have hle := root_content_nonpos j b hj; omega)
+  · exact hintro
+
+/-- READ-CONFIG, the read is a fire's FN with a tnet-POSITIVE argument
+type: the argument is a positive-conclusion clean node on the path —
+`origin_lemma` turns it into a strictly smaller chase state. -/
+theorem config_fn_positive_arg {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {E Γ Δ : List Ty} {X σ : Ty} {fn arg : Term}
+    {hf : Typed Γ fn (.arrow X σ)} {ha : Typed Δ arg X} {hs : Γ ++ Δ = E}
+    (hp : Path root (Typed.app hf ha hs)) (hX : tnet X > 0) :
+    ∃ (j : Nat) (b : Ty), Δ[j]? = some b ∧ tnet b > 0 ∧ uses ha j ≥ 1 ∧
+      fixCount ha = 0 ∧ mintCount ha = 0 ∧ Path root ha ∧
+      size ha < size (Typed.app hf ha hs) := by
+  have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+  obtain ⟨hfca, hmca⟩ := Prem_clean (Prem.appAP (hf := hf) (ha := ha) (hs := hs)) hfc hmc
+  obtain ⟨j, b, hpos, htb, hu⟩ := origin_lemma ha hfca hmca hX
+  exact ⟨j, b, hpos, htb, hu, hfca, hmca, Path.step hp Prem.appAP, Prem_size Prem.appAP⟩
+
+/-- READ-CONFIG, the read is a fire's ARG whose fn is λ-headed (the
+killer): the killer's body spends its own binder-position exactly once
+(M2 — `single_linear_use` at the linear binder), a strictly smaller
+state on the path. NOTE the positivity transfer: the killed position's
+type IS the read's type, so the state's tnet-positivity survives. This
+is the move that does NOT transfer at the CORNER's appAP consumer
+(killing the introducer's own arrow type loses the sign) — see the
+module doc. -/
+theorem config_arg_lam_killer {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {E Γ : List Ty} {τv σ : Ty} {body : Term}
+    {hb : Typed (τv :: Γ) body σ} {ha : Typed [τv] (Term.var 0) τv}
+    {hs : Γ ++ [τv] = E}
+    (hp : Path root (Typed.app (Typed.lam hb) ha hs)) (htv : tnet τv > 0) :
+    Path root hb ∧ fixCount hb = 0 ∧ mintCount hb = 0 ∧
+      (τv :: Γ)[0]? = some τv ∧ tnet τv > 0 ∧ uses hb 0 ≥ 1 ∧
+      size hb < size (Typed.app (Typed.lam hb) ha hs) := by
+  have hlin : τv.isLinear = true := by
+    rcases Bool.eq_false_or_eq_true τv.isLinear with h | h
+    · exact h
+    · rw [nonlinear_tnet τv h] at htv; omega
+  have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+  obtain ⟨hfcf, hmcf⟩ := Prem_clean (Prem.appFP (ha := ha)) hfc hmc
+  obtain ⟨hfcb, hmcb⟩ := Prem_clean (Prem.lamP (h := hb)) hfcf hmcf
+  refine ⟨Path.step (Path.step hp Prem.appFP) Prem.lamP, hfcb, hmcb,
+    List.get?_zero_cons', htv, ?_, ?_⟩
+  · exact Nat.le_of_eq (Eq.symm (single_linear_use hb 0 τv List.get?_zero_cons' hlin))
+  · have h1 : size hb < size (Typed.lam hb) := Prem_size Prem.lamP
+    have h2 : size (Typed.lam hb) < size (Typed.app (Typed.lam hb) ha hs) := Prem_size Prem.appFP
+    omega
 
 end Dcare
