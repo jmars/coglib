@@ -595,4 +595,40 @@ theorem killer_step {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
     have h2 : size (Typed.lam hb) < size (Typed.app (Typed.lam hb) ha hs) := Prem_size Prem.appFP
     omega
 
+/-- READ-CONFIG, the read is a `lete`'s SCRUTINEE: the piece's type is
+`tensor x y` with a positive trace-net — so some component is
+trace-net-positive; the component is a binder of the body's context
+(`y :: x :: Γ₂` — position 0 for `y`, 1 for `x`), linear
+(trace-carrying), hence spent exactly once by the body (M2). The next
+state is the body at the component's position — a strictly smaller
+path-reachable positive state. -/
+theorem config_lete_elim {t₀ : Term} {root : Typed [Ty.content] t₀ Ty.unit}
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {E Γ₁ Γ₂ : List Ty} {x y c : Ty} {s body : Term}
+    {ht : Typed Γ₁ s (.tensor x y)} {hb : Typed (y :: x :: Γ₂) body c}
+    {hs : Γ₁ ++ Γ₂ = E}
+    (hp : Path root (Typed.lete ht hb hs)) (hxy : tnet x + tnet y > 0) :
+    ∃ (j : Nat) (b : Ty), (y :: x :: Γ₂)[j]? = some b ∧ tnet b > 0 ∧
+      uses hb j ≥ 1 ∧ fixCount hb = 0 ∧ mintCount hb = 0 ∧ Path root hb ∧
+      size hb < size (Typed.lete ht hb hs) := by
+  have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+  obtain ⟨hfcb, hmcb⟩ := Prem_clean (Prem.leteBP (ht := ht) (hb := hb) (hs := hs)) hfc hmc
+  by_cases hty : tnet y > 0
+  · have hlin : y.isLinear = true := by
+      rcases Bool.eq_false_or_eq_true y.isLinear with h | h
+      · exact h
+      · rw [nonlinear_tnet y h] at hty; omega
+    exact ⟨0, y, List.get?_zero_cons', hty,
+      Nat.le_of_eq (Eq.symm (single_linear_use hb 0 y List.get?_zero_cons' hlin)),
+      hfcb, hmcb, Path.step hp Prem.leteBP, Prem_size Prem.leteBP⟩
+  · have htx : tnet x > 0 := by omega
+    have hlin : x.isLinear = true := by
+      rcases Bool.eq_false_or_eq_true x.isLinear with h | h
+      · exact h
+      · rw [nonlinear_tnet x h] at htx; omega
+    refine ⟨1, x, ?_, htx, ?_, hfcb, hmcb, Path.step hp Prem.leteBP, Prem_size Prem.leteBP⟩
+    · exact List.get?_succ_cons'.trans List.get?_zero_cons'
+    · exact Nat.le_of_eq (Eq.symm (single_linear_use hb 1 x
+        (List.get?_succ_cons'.trans List.get?_zero_cons') hlin))
+
 end Dcare

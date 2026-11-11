@@ -139,3 +139,4 @@ Rules:
 #print axioms Dcare.config_fn_positive_arg
 #print axioms Dcare.config_arg_lam_killer
 #print axioms Dcare.killer_step
+#print axioms Dcare.config_lete_elim
