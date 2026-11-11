@@ -4,6 +4,9 @@ Artifact for the paper `paper/paper.md`:
 
 > *The Care Calculus: A Mechanized Linear Type Theory for Safe Agents*
 
+**Published: concept doi [10.5281/zenodo.24122159](https://doi.org/10.5281/zenodo.24122159)** —
+it always resolves to the latest archived version. Cite the paper by the concept DOI.
+
 A multi-sorted linear logic with coalgebraic generators, guarded recursion, and
 resource-linear destructors, mechanized in Lean 4 (4.35.0, no Mathlib). The
 No-Cloning theorem and Unitarity emerge as structural theorems of the grammar:
@@ -63,5 +66,7 @@ incorporation into commercial systems.
 
 Prepared for public release as a preprint plus its mechanization. Copyright
 holder Jaye Timothy Marshall, ORCID [0009-0002-5209-8161](https://orcid.org/0009-0002-5209-8161).
-`.zenodo.json` carries the deposit metadata. The DOI is minted by the deposit
-itself; this file will cite it once it exists.
+`.zenodo.json` carries the deposit metadata. Deposited on Zenodo as
+[10.5281/zenodo.24122160](https://doi.org/10.5281/zenodo.24122160) (v1.0.0);
+the concept DOI above covers later versions. The deposit carries `paper.pdf`
+and the archived tree `coglib-v1.0.0.zip`.
