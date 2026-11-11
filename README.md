@@ -13,11 +13,28 @@ No-Cloning theorem and Unitarity emerge as structural theorems of the grammar:
 a derivation of contraction would *be* a cloner, and a derivation of vanishing
 would *be* an eraser.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/calculus-dark.svg">
+  <img src="diagrams/calculus-light.svg" width="100%" alt="The Care Calculus at a glance: knower K is the one duplicable resource; gen produces content together with a knower; cons needs a guarded stream; red yields knowledge and obj yields the objective's value; terminate exits to an inert trace that nothing consumes. Copying content or erasing it is untypable.">
+</picture>
+
+The two claims are about where a reduction chain ends. If it reaches the minds
+whose content the objective consumes, a protective constraint is derivable from
+the objective's own structure; if it never does, nothing protective is derivable
+at all, and a constraint imposed from outside is the first thing optimization
+removes.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/chains-dark.svg">
+  <img src="diagrams/chains-light.svg" width="100%" alt="Two reduction chains. Above: objective consumes content produced by a knower, so a protective constraint is derivable. Below: the chain ends at no knower, so nothing protective is derivable.">
+</picture>
+
 ## Layout
 
 | path | contents |
 |---|---|
 | `paper/paper.md` | the paper (markdown — the source of truth) |
+| `diagrams/` | the two figures above as SVG, each a light/dark pair selected with `<picture>` |
 | `paper.pdf` | the paper rendered to PDF, generated from `paper/paper.md`: `pandoc paper/paper.md --pdf-engine=typst -o paper.pdf` |
 | `lean/` | the Lean 4 development — the library `Dcare`, its modules, and `Audit.lean` (the axiom audit, run by the gate and not part of the library) |
 | `scripts/lean-check.sh` | the gate: build, axiom audit (no `T2_postulate`, no `sorryAx` outside the named conjectures), no public file importing the restricted companion |
