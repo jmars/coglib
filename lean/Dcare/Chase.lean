@@ -175,4 +175,56 @@ theorem reduce_at {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (d : Typed Γ₀ 
   · simp only [fixCount] at hfc₀ ⊢; omega
   · simp only [mintCount] at hmc₀ ⊢; omega
 
+/-- The token spends exactly itself: at the singleton `[content]`
+context the weighted spend is the one use of `net content = 1`. -/
+theorem spendNet_singleton {t : Term} {τ : Ty} (h : Typed [Ty.content] t τ) :
+    spendNet h = 1 := by
+  have hu : uses h 0 = 1 := single_linear_use h 0 Ty.content rfl rfl
+  rw [spendNet]
+  simp only [spendNetFrom, hu, net]
+  omega
+
+/-!
+## The assembly, conditional on the chase
+
+Everything around the chase is proven: the front door (mint-freeness),
+the accounting (`flowEq` turns the token into a sink-count), the
+sink-extraction (the killed premise with clean counters), and the two
+arithmetic origins (a tnet-positive spend under the trace premise; an
+snet-positive spend under the ▷stream tail). What remains is THE CHASE
+itself — killing a positive spent position at a clean node. Its two
+statements are pinned here exactly as the assembly needs them.
+-/
+
+/-- `no_vanishing_fixfree` reduced to the chase: the trace-side and
+stream-side position-kills are the only missing pieces. The chase
+hypotheses are the honest S3 targets — see the module doc for the two
+open design problems (the BFree-blocked corner; the rides' freshness). -/
+theorem no_vanishing_fixfree_of_chase
+    (hchaseT : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (d : Typed Γ t τ),
+      fixCount d = 0 → mintCount d = 0 →
+      ∀ (i : Nat) (b : Ty), Γ[i]? = some b → tnet b > 0 → uses d i ≥ 1 → False)
+    (hchaseS : ∀ {Γ : List Ty} {t : Term} (d : Typed Γ t (.later Ty.stream)),
+      fixCount d = 0 → mintCount d = 0 →
+      ∀ (i : Nat) (b : Ty), Γ[i]? = some b → snet b > 0 → uses d i ≥ 1 → False) :
+    ∀ (t : Term) (h : Typed [Ty.content] t Ty.unit), fixCount h = 0 → False := by
+  intro t h hf
+  have hm : mintCount h = 0 := mintCount_zero_at_unit_root h hf
+  have hfm : fixMint h = 0 := fixMint_eq_zero h hf
+  have hsp : spendNet h = 1 := spendNet_singleton h
+  have he := flowEq h
+  simp only [net] at he
+  rw [hsp, hfm, Int.add_zero] at he
+  have hsinks : 0 < sinks h := by
+    have h1 : (1 : Int) ≤ ↑(sinks h) := by omega
+    exact_mod_cast h1
+  obtain hsink | hsink := sinks_extract' h h Path.here hsinks hf hm
+  · obtain ⟨Γ', t', ht, _, hfc', hmc'⟩ := hsink
+    obtain ⟨i, b, hpos, hpos', hu⟩ :=
+      origin_lemma ht hfc' hmc' (by simp [tnet])
+    exact hchaseT ht hfc' hmc' i b hpos hpos' hu
+  · obtain ⟨Γ', t', htl, _, hfc', hmc'⟩ := hsink
+    obtain ⟨i, b, hpos, hpos', hu⟩ := stream_origin htl hfc'
+    exact hchaseS htl hfc' hmc' i b hpos hpos' hu
+
 end Dcare

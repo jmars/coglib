@@ -125,3 +125,5 @@ Rules:
 #print axioms Dcare.linear_beta_splice
 #print axioms Dcare.rebuild_along
 #print axioms Dcare.reduce_at
+#print axioms Dcare.spendNet_singleton
+#print axioms Dcare.no_vanishing_fixfree_of_chase
