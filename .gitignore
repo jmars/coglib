@@ -1,0 +1,4 @@
+# Build artifacts (Lean's own, per-lean-library)
+lean/.lake/
+# The confidential companion is never part of the public artifact
+restricted/

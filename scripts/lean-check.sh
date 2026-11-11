@@ -25,11 +25,17 @@ if rg -n "sorryAx" /tmp/dcare-audit.txt \
   exit 1
 fi
 echo '--- restricted companion (compiled separately, not in the public build) ---'
-lake env lean ../restricted/Private.lean > /tmp/dcare-restricted.txt 2>&1 || {
-  cat /tmp/dcare-restricted.txt
-  echo 'FAIL: restricted companion does not compile' >&2
-  exit 1
-}
+if [ -f ../restricted/Private.lean ]; then
+  lake env lean ../restricted/Private.lean > /tmp/dcare-restricted.txt 2>&1 || {
+    cat /tmp/dcare-restricted.txt
+    echo 'FAIL: restricted companion does not compile' >&2
+    exit 1
+  }
+  echo 'compiles against these interfaces'
+else
+  echo 'NOT PRESENT in this checkout — the confidential companion (paper §16)'
+  echo 'is withheld from the public artifact; this check is skipped, not passed.'
+fi
 if rg -n "import.*[Rr]estricted|Dcare.Restricted" Dcare/ Dcare.lean Audit.lean; then
   echo 'FAIL: a public file references restricted/' >&2
   exit 1

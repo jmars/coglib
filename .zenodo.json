@@ -1,0 +1,28 @@
+{
+  "title": "The Care Calculus: A Mechanized Linear Type Theory for Safe Agents",
+  "upload_type": "publication",
+  "publication_type": "preprint",
+  "description": "We present the Care Calculus: a multi-sorted linear logic with coalgebraic generators, guarded recursion, and resource-linear destructors. While initially developed to model the derivation of care in self-referential systems, the calculus provides a general framework for all unitary, non-duplicable resource flows. We mechanize the calculus in Lean 4, proving that the No-Cloning theorem and Unitarity emerge as structural theorems of the grammar: a derivation of contraction would be a cloner, and a derivation of vanishing would be an eraser. The artifact contains the complete Lean 4 development (Lean 4.35.0, no Mathlib): the library Dcare, a per-theorem axiom audit, the two build gates (build and disclosure, and the paper-anchor check), and the paper's markdown source. The two unrestricted classical linearity statements are carried as named conjectures with five proven fragment strengths each, the deepest of which integrate the care machinery; axioms beyond propext, Classical.choice and Quot.sound appear nowhere, and the one theorem asserting independence from the withheld constructive companion is enforced by the audit rather than claimed. The paper's section 16 states the tiered disclosure: the concrete constraint-type assignment and the constructive instantiation are withheld, and the companion is not part of this deposit.",
+  "creators": [
+    {
+      "name": "Jaye Timothy Marshall",
+      "orcid": "0009-0002-5209-8161"
+    }
+  ],
+  "keywords": [
+    "linear logic",
+    "linear type theory",
+    "substructural logic",
+    "resource-sensitive types",
+    "coalgebra",
+    "guarded recursion",
+    "no-cloning",
+    "unitarity",
+    "mechanized proof",
+    "Lean 4",
+    "safe agents",
+    "dual-use artifacts"
+  ],
+  "license": "cc-by-nc-sa-4.0",
+  "notes": "Deposit license is CC-BY-NC-SA-4.0, covering paper/paper.md, paper.pdf and any figures. The Lean 4 development (lean/) and the gate scripts (scripts/) are licensed AGPL-3.0-or-later (see LICENSE). These terms are deliberate: this is a dual-use artifact and it is not offered for incorporation into commercial systems. The confidential companion described in the paper's section 16 is withheld and is not part of this deposit."
+}

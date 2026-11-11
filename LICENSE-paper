@@ -1,0 +1,32 @@
+# License — paper and figures
+
+Copyright (c) 2026 Jaye Timothy Marshall
+
+The paper (`paper/paper.md` and its rendering `paper.pdf`) and any figures in
+this repository are licensed under the Creative Commons
+Attribution-NonCommercial-ShareAlike 4.0 International license
+(**CC-BY-NC-SA-4.0**).
+
+Canonical deed: <https://creativecommons.org/licenses/by-nc-sa/4.0/>
+
+You are free to share (copy and redistribute the material in any medium or
+format) and to adapt (remix, transform, and build upon the material) under
+these terms:
+
+- **Attribution** — you must give appropriate credit, provide a link to the
+  license, and indicate if changes were made.
+- **NonCommercial** — you may not use the material for commercial purposes.
+- **ShareAlike** — if you remix, transform, or build upon the material, you
+  must distribute your contributions under the same license as the original.
+
+No additional restrictions may be applied. Full terms are in the deed linked
+above and in the legal code at
+<https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode>.
+
+Everything else in this repository — the Lean 4 development (`lean/`) and the
+gates (`scripts/`) — is licensed under the GNU Affero General Public License,
+version 3.0 or later; see `LICENSE`.
+
+The noncommercial and copyleft terms are deliberate: this work is a
+dual-use artifact, and neither the paper nor its mechanization is offered for
+incorporation into commercial systems.
