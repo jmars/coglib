@@ -166,3 +166,7 @@ Rules:
 #print axioms Dcare.consuming_fire
 #print axioms Dcare.corner_piece
 #print axioms Dcare.prem_position_class
+#print axioms Dcare.spine_exit
+#print axioms Dcare.killer_step_gen
+#print axioms Dcare.chain_direct
+#print axioms Dcare.killer_chain

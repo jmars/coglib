@@ -2437,58 +2437,413 @@ theorem prem_position_class : ∀ {E : List Ty} {tc : Term} {τc : Ty} {p : Type
         rw [if_neg (by omega)]
         exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓ') hlin))
 
-/-!
-## THE CHASE PIN (interval 10)
+/-- THE CHAIN'S EXIT PACKAGE: what the killer-chain returns to the
+macro — a named inductive instead of a nested Or, one constructor per
+exit the macro's round-map dispatches on. Each constructor carries its
+own ANCHOR `d'` and its own `Path` data (the chain's internal
+recursions exit at inner nodes; the exits are consumed as bare
+∃-packages — the anchor relations the macro needs are re-derived at S3
+from the descent certificates, fp9's verdict #112). `T` is the PC class
+type (`T = arrow b σ`, `tnet b > 0`). -/
+inductive ChainExit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit) (T : Ty) : Prop where
+  | pos {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {Δ : List Ty} {X : Ty} {w : Term} {hw : Typed Δ w X} {j : Nat} {b' : Ty}
+      (hX : tnet X > 0) (hpos : Δ[j]? = some b') (htb : tnet b' > 0) (hu : uses hw j ≥ 1)
+      (hfc : fixCount hw = 0) (hmc : mintCount hw = 0) (hpw : Path root hw)
+      (hrel : SubEq d' hw)
+      {E' : List Ty} {tp : Term} {τp : Ty} {β' : Typed E' tp τp}
+      (hpβ : Path root β') (hint : Introduces β' b') (sβ : Sub β' hw) : ChainExit root T
+  | ride1 {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {E' : List Ty} {tc' : Term} {τc' : Ty} {c : Typed E' tc' τc'}
+      (hpc : Path root c) (s : Prem c d') (hcons : ConsumingPrem s) : ChainExit root T
+  | ride2 {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {E' : List Ty} {tc' : Term} {τc' : Ty} {c : Typed E' tc' τc'}
+      {Γ₀' : List Ty} {t₀' : Term} {τ₀' : Ty} {n₀ : Typed Γ₀' t₀' τ₀'}
+      (hpc : Path root c) (s : Prem c n₀) (hcons : ConsumingPrem s)
+      (hsub : Sub n₀ d') : ChainExit root T
+  | rideReach {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      (hreach : RootReach root d') : ChainExit root T
+  | top {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      (hcΓ : Γd = [T]) (htv : td = Term.var 0) (hcτ : τd = T) : ChainExit root T
+  | varFn {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {Γf : List Ty} {v : Typed [T] (Term.var 0) T} {hs : Γf ++ [T] = Γd}
+      {hf : Typed Γf (Term.var 0) (Ty.arrow T τd)}
+      (ht : tnet τd ≤ 0) : ChainExit root T
+  | spineLam {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {Γf : List Ty} {Δa : List Ty} {Wb σb : Ty} {body arg : Term}
+      {hb : Typed (Wb :: Γf) body σb} {ha : Typed Δa arg Wb}
+      {E' : List Ty} {hs' : Γf ++ Δa = E'}
+      (hp : Path root (Typed.app (Typed.lam hb) ha hs'))
+      (hsub : Sub d' (Typed.app (Typed.lam hb) ha hs'))
+      (hW : tnet Wb ≤ 0) (hc : tnet σb ≤ 0) : ChainExit root T
+  | spineVar {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {Δa : List Ty} {Wb σb : Ty} {arg : Term} {ha : Typed Δa arg Wb}
+      {E' : List Ty} {hs' : [Ty.arrow Wb σb] ++ Δa = E'}
+      (hp : Path root (Typed.app Typed.var ha hs'))
+      (hsub : Sub d' (Typed.app Typed.var ha hs'))
+      (hc : tnet σb ≤ 0) : ChainExit root T
+  | killerOther {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {Γf : List Ty} {fn : Term} {a b : Ty} (hf : Typed Γf fn (.arrow a b))
+      {Γa : List Ty} {arg : Term} (ha : Typed Γa arg a)
+      {E : List Ty} (hs : Γf ++ Γa = E)
+      (hp : Path root (Typed.app hf ha hs))
+      (hrel : SubEq d' (Typed.app hf ha hs)) : ChainExit root T
+  | identityLam {Γd : List Ty} {td : Term} {τd : Ty} (d' : Typed Γd td τd)
+      {E' : List Ty} {tp : Term} {τp : Ty} {p : Typed E' tp τp}
+      (hsub : Sub d' p) (hE : E' = [])
+      (hlam : ∃ (a' : Ty), tp = Term.lam a' (Term.var 0)) : ChainExit root T
 
-The top-level chase statements, pinned verbatim so every intermediate
-lemma (`killer_chain`, the macro, the ride accounting) is typed against
-the exact consumer. The assembly `no_vanishing_fixfree_of_chase` at the
-top of this file is already WIRED for these shapes — its local
-hypotheses `hchaseT`/`hchaseS` are exactly the statements below. When
-proven, the theorems are DECLARED with these exact statements (names
-`chase_trace` / `chase_stream`) and instantiate the assembly.
-
-```lean
-theorem chase_trace {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+/-- THE SPINE EXIT: the chain's appAP config with an app-spine head —
+`fn = app g u'` with `g : arrow W (arrow T' σ')`. At each level: an
+origin fires at the arg (`tnet W > 0`) or at the fire (`tnet (arrow T'
+σ') > 0`); else descend into the spine head. The bottom is a `var`
+(spineVar), a `λ` (spineLam — the redex/parasite config, discriminated
+by the chase on `W.isLinear`), a constant — IMPOSSIBLE, since the
+codomain is arrow-shaped (`gen`/`red`/`obj`/`terminate` have
+tensor/atom codomains; the arms auto-drop) — or a transparent
+(`lete`/`contr`/`weak`) frame, which exits as `killerOther`. The
+codomain is kept as `arrow T' σ'` exactly so the constants are
+type-blocked. -/
+theorem spine_exit {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
     (hrf : fixCount root = 0) (hrm : mintCount root = 0)
-    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d)
-    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (htb : tnet b > 0)
-    (hu : uses d i ≥ 1) : False
+    {Γd : List Ty} {td : Term} {τd : Ty} (d : Typed Γd td τd) (T : Ty) :
+    ∀ n {Γg : List Ty} {gt : Term} {W T' σ' : Ty}
+      (g : Typed Γg gt (.arrow W (.arrow T' σ'))), size g ≤ n →
+    ∀ {Γu : List Ty} {u' : Term} (hu' : Typed Γu u' W)
+      (E : List Ty) (hs : Γg ++ Γu = E),
+    Path root (Typed.app g hu' hs) → Sub d (Typed.app g hu' hs) →
+    ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d' : Typed Γd' td' τd'),
+      ChainExit root T := by
+  intro n Γg gt W T' σ' g hn Γu u' hu' E hs hp hsub
+  by_cases hW : tnet W > 0
+  · have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+    obtain ⟨hfca, hmca⟩ := Prem_clean (Prem.appAP (hf := g) (ha := hu') (hs := hs)) hfc hmc
+    obtain ⟨j, b', hpos, htb, hu⟩ := origin_lemma hu' hfca hmca hW
+    obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
+      introducer_of_positive (Path.step hp Prem.appAP) j b' hpos htb
+    exact ⟨Γu, u', W, hu',
+      ChainExit.pos hu' hW hpos htb hu hfca hmca (Path.step hp Prem.appAP)
+        SubEq.refl hpβ hint sβ⟩
+  · have hW' : tnet W ≤ 0 := by omega
+    by_cases hc : tnet (.arrow T' σ') > 0
+    · have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+      obtain ⟨j, b', hpos, htb, hu⟩ := origin_lemma (Typed.app g hu' hs) hfc hmc hc
+      obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
+        introducer_of_positive hp j b' hpos htb
+      exact ⟨E, Term.app gt u', .arrow T' σ', Typed.app g hu' hs,
+        ChainExit.pos (Typed.app g hu' hs) hc hpos htb hu hfc hmc hp
+          SubEq.refl hpβ hint sβ⟩
+    · have hc' : tnet (.arrow T' σ') ≤ 0 := by omega
+      cases g with
+      | var =>
+          exact ⟨Γd, td, τd, d,
+            ChainExit.spineVar d hp hsub hc'⟩
+      | lam hb =>
+          exact ⟨Γd, td, τd, d,
+            ChainExit.spineLam d hp hsub hW' hc'⟩
+      | app hg ha hs₁ =>
+          exact spine_exit root hrf hrm d T n hg
+            (by rw [size_app] at hn; omega) ha Γg hs₁
+            (Path_append (Typed.app (Typed.app hg ha hs₁) hu' hs) root
+              (sub_path (Sub.appLD (hf := Typed.app hg ha hs₁) (ha := hu') (hs := hs))) hp)
+            (Sub_trans hsub (Sub.appLD (hf := Typed.app hg ha hs₁) (ha := hu') (hs := hs)))
+      | lete ht hb hs₁ =>
+          exact ⟨_, _, _,
+            Typed.app (Typed.lete ht hb hs₁) hu' hs,
+            ChainExit.killerOther (Typed.app (Typed.lete ht hb hs₁) hu' hs)
+              (Typed.lete ht hb hs₁) hu' hs hp SubEq.refl⟩
+      | fix hΓ h =>
+          have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+          obtain ⟨hfcf, hmcf⟩ :=
+            Prem_clean (Prem.appFP (hf := Typed.fix hΓ h) (ha := hu') (hs := hs)) hfc hmc
+          have hff : 1 + fixCount h = 0 := by simpa only [fixCount] using hfcf
+          omega
+      | contr hk h =>
+          exact ⟨_, _, _,
+            Typed.app (Typed.contr hk h) hu' hs,
+            ChainExit.killerOther (Typed.app (Typed.contr hk h) hu' hs)
+              (Typed.contr hk h) hu' hs hp SubEq.refl⟩
+      | weak hk h =>
+          exact ⟨_, _, _,
+            Typed.app (Typed.weak hk h) hu' hs,
+            ChainExit.killerOther (Typed.app (Typed.weak hk h) hu' hs)
+              (Typed.weak hk h) hu' hs hp SubEq.refl⟩
 
-theorem chase_stream {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+/-- THE GENERAL-DOMAIN KILLER-STEP: `killer_step` with the killer's
+domain `X` only equationally the class type — the arm's read is in the
+raw `Typed Δ arg X` shape, converted via `htv`/`hcΓ` (the landed
+`killer_step` is the `X := T` instance). -/
+theorem killer_step_gen {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
     (hrf : fixCount root = 0) (hrm : mintCount root = 0)
-    {Γ : List Ty} {t : Term} {d : Typed Γ t (.later Ty.stream)} (hp : Path root d)
-    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (hsb : snet b > 0)
-    (hu : uses d i ≥ 1) : False
-```
+    {E Γf Δ : List Ty} {X b σ b' : Ty} {body arg : Term}
+    {hb : Typed (X :: Γf) body b'} {ha : Typed Δ arg X} {hs : Γf ++ Δ = E}
+    (hp : Path root (Typed.app (Typed.lam hb) ha hs))
+    (htv : arg = Term.var 0) (hcΓ : Δ = [X])
+    (hX : X = Ty.arrow b σ) (htb : tnet b > 0) :
+    Path root hb ∧ fixCount hb = 0 ∧ mintCount hb = 0 ∧
+      (X :: Γf)[0]? = some X ∧ uses hb 0 ≥ 1 ∧
+      size hb < size (Typed.app (Typed.lam hb) ha hs) := by
+  have hblin : b.isLinear = true := by
+    rcases Bool.eq_false_or_eq_true b.isLinear with h | h
+    · exact h
+    · rw [nonlinear_tnet b h] at htb; omega
+  have hXlin : X.isLinear = true := by
+    rw [hX]; simp only [Ty.isLinear, hblin, Bool.true_or]
+  have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+  obtain ⟨hfcf, hmcf⟩ := Prem_clean (Prem.appFP (hf := Typed.lam hb) (ha := ha) (hs := hs)) hfc hmc
+  obtain ⟨hfcb, hmcb⟩ := Prem_clean (Prem.lamP (h := hb)) hfcf hmcf
+  refine ⟨Path.step (Path.step hp Prem.appFP) Prem.lamP, hfcb, hmcb,
+    List.get?_zero_cons', ?_, ?_⟩
+  · exact Nat.le_of_eq (Eq.symm (single_linear_use hb 0 X List.get?_zero_cons' hXlin))
+  · have h1 : size hb < size (Typed.lam hb) := Prem_size Prem.lamP
+    have h2 : size (Typed.lam hb) < size (Typed.app (Typed.lam hb) ha hs) :=
+      Prem_size (Prem.appFP (hf := Typed.lam hb) (ha := ha) (hs := hs))
+    omega
 
-THE FUEL (the induction measure): one Nat encoding the lexicographic
-triple LEX(rides, level, size) with GLOBAL bounds — `level := size root −
-size β` (β the state's piece introducer, via `introducer_of_positive`;
-`corner_level_drop` proves the corner's strict drop), `size := size d`,
-and `rides` a strictly decreasing Nat initialized ≤ `size root` (each
-ride event decrements it; the bound rides ≤ size root is maintained by
-decrease alone — no freshness lemma is needed for the arithmetic). The
-encoding: `fuel := rides·(S+1)² + level·(S+1) + size` with
-`S = size root`; corner: level ↓ strict at fixed rides; ride: rides ↓
-at arbitrary level/size; descent: size ↓ at fixed rides+level.
+/-- THE CHAIN'S DIRECT-CONFIG ANALYSIS: the read is a direct premise of
+the state `d`. The helper matches the PREMISE (not `d` itself) and the
+witnesses are built from the arm's bound data — the rebuilt fires carry
+their own `Path` data, so the d-defeq never matters (fp9's verdict
+#112: the chain's state IS the rebuilt fire). `hrec` is the
+killer-chain's own one-step recursion (the killer-dive continuation). -/
+theorem chain_direct {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d) (T : Ty)
+    {b σ : Ty} (hT : T = Ty.arrow b σ) (htb : tnet b > 0)
+    (hblin : b.isLinear = true) (hTlin : T.isLinear = true)
+    (hfc : fixCount d = 0) (hmc : mintCount d = 0)
+    (hrec : ∀ {Γ' : List Ty} {t' : Term} {τ' : Ty} {d' : Typed Γ' t' τ'},
+      size d' < size d →
+      ∀ (hp' : Path root d') (i' : Nat), Γ'[i']? = some T → uses d' i' ≥ 1 →
+      ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d'' : Typed Γd' td' τd'),
+        ChainExit root T) :
+    ∀ {Γv : List Ty} {tv : Term} {τv : Ty} (v : Typed Γv tv τv), Prem d v →
+    tv = Term.var 0 → Γv = [τv] → τv = T →
+    ∀ (i : Nat), Γ[i]? = some T → uses d i ≥ 1 →
+    ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d' : Typed Γd' td' τd'),
+      ChainExit root T := by
+  intro Γv tv τv v s htv hcΓv hτv i hpos hu
+  match s with
+  | @Prem.appFP E' Γf Δ X b' fn arg hf ha hs =>
+      have hty : Ty.arrow X b' = Ty.arrow b σ := hτv.trans hT
+      injection hty with hX hb'
+      have hXb : tnet X > 0 := by rw [hX]; exact htb
+      obtain ⟨hfca, hmca⟩ :=
+        Prem_clean (Prem.appAP (hf := hf) (ha := ha) (hs := hs)) hfc hmc
+      obtain ⟨j, b'', hposj, htb'', huj⟩ := origin_lemma ha hfca hmca hXb
+      obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
+        introducer_of_positive (Path.step hp Prem.appAP) j b'' hposj htb''
+      exact ⟨Δ, arg, X, ha,
+        ChainExit.pos ha hXb hposj htb'' huj hfca hmca
+          (Path.step hp Prem.appAP) SubEq.refl hpβ hint sβ⟩
+  | @Prem.appAP E' Γf Δ X b' fn arg hf ha hs =>
+      cases hf with
+      | lam hb =>
+          rcases killer_step_gen root hrf hrm (hb := hb) (ha := ha) (hs := hs)
+              hp htv hcΓv (hτv.trans hT) htb with
+            ⟨hpb, hfcb, hmcb, hposb, hub, hszb⟩
+          rcases hrec (by rw [size_app] at hszb ⊢; omega) hpb 0
+              (by rw [← hτv]; exact hposb) hub with
+            ⟨Γd', td', τd', d', hexit⟩
+          exact ⟨Γd', td', τd', d', hexit⟩
+      | var =>
+          by_cases hcb : tnet b' > 0
+          · obtain ⟨j, b'', hposj, htb'', huj⟩ :=
+              origin_lemma (Typed.app Typed.var ha hs) hfc hmc hcb
+            obtain ⟨Eβ, tpβ, τpβ, β', hpβ, hint, sβ⟩ :=
+              introducer_of_positive hp j b'' hposj htb''
+            exact ⟨E', Term.app (Term.var 0) arg, b', Typed.app Typed.var ha hs,
+              ChainExit.pos (d' := Typed.app Typed.var ha hs) (hw := Typed.app Typed.var ha hs)
+                hcb hposj htb'' huj hfc hmc hp SubEq.refl hpβ hint sβ⟩
+          · exact ⟨E', Term.app (Term.var 0) arg, b', Typed.app Typed.var ha hs,
+              ChainExit.varFn (d' := Typed.app Typed.var ha hs)
+                (v := hτv ▸ (hcΓv ▸ (htv ▸ ha))) (hs := hτv ▸ (hcΓv ▸ hs))
+                (hf := hτv ▸ Typed.var) (by omega)⟩
+      | app hg ha' hs₁ =>
+          exact spine_exit root hrf hrm (Typed.app (Typed.app hg ha' hs₁) ha hs) T
+            (size hg) hg (Nat.le_refl _) ha' Γf hs₁
+            (Path_append (Typed.app (Typed.app hg ha' hs₁) ha hs) root
+              (sub_path (Sub.appLD (hf := Typed.app hg ha' hs₁) (ha := ha) (hs := hs))) hp)
+            (Sub.appLD (hf := Typed.app hg ha' hs₁) (ha := ha) (hs := hs))
+      | fix hΓ h =>
+          obtain ⟨hfcf, hmcf⟩ :=
+            Prem_clean (Prem.appFP (hf := Typed.fix hΓ h) (ha := ha) (hs := hs)) hfc hmc
+          have hff : 1 + fixCount h = 0 := by simpa only [fixCount] using hfcf
+          omega
+      | gen =>
+          cases (hτv.trans hT)
+      | red =>
+          cases (hτv.trans hT)
+      | obj =>
+          cases (hτv.trans hT)
+      | terminate =>
+          cases (hτv.trans hT)
+      | lete ht hb hs' =>
+          exact ⟨E', _, _, Typed.app (Typed.lete ht hb hs') ha hs,
+            ChainExit.killerOther (Typed.app (Typed.lete ht hb hs') ha hs)
+              (Typed.lete ht hb hs') ha hs hp SubEq.refl⟩
+      | contr hk h =>
+          exact ⟨E', _, _, Typed.app (Typed.contr hk h) ha hs,
+            ChainExit.killerOther (Typed.app (Typed.contr hk h) ha hs)
+              (Typed.contr hk h) ha hs hp SubEq.refl⟩
+      | weak hk h =>
+          exact ⟨E', _, _, Typed.app (Typed.weak hk h) ha hs,
+            ChainExit.killerOther (Typed.app (Typed.weak hk h) ha hs)
+              (Typed.weak hk h) ha hs hp SubEq.refl⟩
+  | @Prem.pairLP E' Γf Δ x y l r hl hr hs =>
+      rcases value_climb root hrf hrm hp with
+        ⟨Ec, tc, τc, c, hpc, sc, hcons⟩
+      | ⟨Ec, tc, τc, c, Γ₀, t₀, τ₀, n₀, hpc, sc, hcons, hsub⟩
+      | hreach
+      · exact ⟨E', _, _, Typed.pair hl hr hs,
+          ChainExit.ride1 (Typed.pair hl hr hs) hpc sc hcons⟩
+      · exact ⟨E', _, _, Typed.pair hl hr hs,
+          ChainExit.ride2 (Typed.pair hl hr hs) hpc sc hcons hsub⟩
+      · exact ⟨E', _, _, Typed.pair hl hr hs,
+          ChainExit.rideReach (Typed.pair hl hr hs) hreach⟩
+  | @Prem.pairRP E' Γf Δ x y l r hl hr hs =>
+      rcases value_climb root hrf hrm hp with
+        ⟨Ec, tc, τc, c, hpc, sc, hcons⟩
+      | ⟨Ec, tc, τc, c, Γ₀, t₀, τ₀, n₀, hpc, sc, hcons, hsub⟩
+      | hreach
+      · exact ⟨E', _, _, Typed.pair hl hr hs,
+          ChainExit.ride1 (Typed.pair hl hr hs) hpc sc hcons⟩
+      · exact ⟨E', _, _, Typed.pair hl hr hs,
+          ChainExit.ride2 (Typed.pair hl hr hs) hpc sc hcons hsub⟩
+      · exact ⟨E', _, _, Typed.pair hl hr hs,
+          ChainExit.rideReach (Typed.pair hl hr hs) hreach⟩
+  | @Prem.leteTP E' Γ₁ Γ₂ x y c' t' body ht hb hs =>
+      rw [hT] at hτv
+      cases hτv
+  | @Prem.leteBP E' Γ₁ Γ₂ x y c' t' body ht hb hs =>
+      have hlen := congrArg List.length hcΓv
+      simp only [List.length_cons, List.length_nil] at hlen
+      exact absurd hlen (by omega)
+  | @Prem.nextP E' a' t' h =>
+      rcases value_climb root hrf hrm hp with
+        ⟨Ec, tc, τc, c, hpc, sc, hcons⟩
+      | ⟨Ec, tc, τc, c, Γ₀, t₀, τ₀, n₀, hpc, sc, hcons, hsub⟩
+      | hreach
+      · exact ⟨E', _, _, Typed.next h,
+          ChainExit.ride1 (Typed.next h) hpc sc hcons⟩
+      · exact ⟨E', _, _, Typed.next h,
+          ChainExit.ride2 (Typed.next h) hpc sc hcons hsub⟩
+      · exact ⟨E', _, _, Typed.next h,
+          ChainExit.rideReach (Typed.next h) hreach⟩
+  | @Prem.fixP E' a' body hnl h =>
+      have hty : Ty.arrow (Ty.later a') a' = Ty.arrow b σ := hτv.trans hT
+      have hcontra : (Ty.arrow (Ty.later a') a').isLinear = false :=
+        hnl 0 (Ty.arrow (Ty.later a') a')
+          (get?_zero_of_singleton (c := Ty.arrow (Ty.later a') a') hcΓv)
+      have htrue : (Ty.arrow (Ty.later a') a').isLinear = true := hty.symm ▸ (hT ▸ hTlin)
+      rw [hcontra] at htrue
+      cases htrue
+  | @Prem.consHP E' Γf Δ hd tl hc ht hs =>
+      rw [hT] at hτv
+      cases hτv
+  | @Prem.consTP E' Γf Δ hd tl hc ht hs =>
+      rw [hT] at hτv
+      cases hτv
+  | @Prem.snocTP E' Γf Δ t' u' ht hu hs =>
+      rw [hT] at hτv
+      cases hτv
+  | @Prem.snocUP E' Γf Δ t' u' ht hu hs =>
+      rw [hT] at hτv
+      cases hτv
+  | @Prem.contrP E' k t' τ' hk h =>
+      have hlen := congrArg List.length hcΓv
+      simp only [List.length_cons, List.length_nil] at hlen
+      exact absurd hlen (by omega)
+  | @Prem.lamP E' a' b' body h =>
+      have hlen := congrArg List.length hcΓv
+      simp only [List.length_cons, List.length_nil] at hlen
+      have hlen' : E'.length = 0 := by omega
+      cases E' with
+      | nil =>
+          rw [List.get?_nil'] at hpos
+          contradiction
+      | cons x xs =>
+          have hbad : xs.length + 1 = 0 := by
+            simp only [List.length_cons] at hlen'
+            exact hlen'
+          exact absurd hbad (by omega)
+  | @Prem.weakP E' k t' τ' hk h =>
+      cases i with
+      | zero =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with hkT
+          have hcontra : T.isLinear = false := by
+            rw [hkT] at hk
+            exact hk
+          rw [hcontra] at hTlin
+          cases hTlin
+      | succ j =>
+          rw [List.get?_succ_cons'] at hpos
+          cases j with
+          | zero =>
+              rcases hrec (by exact Prem_size (Prem.weakP (hk := hk) (h := h)))
+                  (Path.step hp (Prem.weakP (hk := hk) (h := h))) 0
+                  (hτv ▸ (hcΓv.symm ▸ List.get?_zero_cons'))
+                  (by simpa only [uses, if_neg (by decide : ¬ (1 : Nat) = 0)] using hu) with
+                ⟨Γd', td', τd', d', hexit⟩
+              exact ⟨Γd', td', τd', d', hexit⟩
+          | succ m =>
+              rw [hcΓv, List.get?_succ_cons', List.get?_nil'] at hpos
+              contradiction
 
-THE QUARTET — the four configs the round-map cannot price; they ride as
-named HYPOTHESES of the chase theorems until the sweep prices them (the
-honest conditional layer — visible in the statement, never silent):
+/-- THE KILLER-CHAIN: the M3-family internal loop at the PC class —
+state `(d, i)` with `Γ[i]? = some T`, `T = arrow b σ`, `tnet b > 0`.
+The chain descends (type-stable, size strictly dropping) through
+killer-of-killer dives (`killer_step`) and transparent frames, and
+exits with the `ChainExit` package the macro's round-map dispatches on:
+`pos` (an origin fires — the chase resumes at a strictly smaller or
+shallower state), the rides, `top` (the node IS the read — the macro
+analyzes the parent fire), `varFn` (a var-headed fire whose conclusion
+sign is dead — the quartet's var-fn hypothesis), the spine bottoms, the
+transparent-killer configs (`killerOther`), or the identity-λ (the
+macro's ascent). The exits are consumed as bare ∃-packages (fp9's
+#112: the anchor relations are re-derived at S3 from the descent
+certificates). -/
+theorem killer_chain {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0) :
+    ∀ n {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ}, size d ≤ n →
+    ∀ (hp : Path root d) (i : Nat) (T : Ty), Γ[i]? = some T → uses d i ≥ 1 →
+    ∀ {b σ : Ty}, T = Ty.arrow b σ → tnet b > 0 →
+    ∃ (Γd' : List Ty) (td' : Term) (τd' : Ty) (d' : Typed Γd' td' τd'),
+      ChainExit root T := by
+  intro n
+  induction n with
+  | zero =>
+      intro Γ t τ d hn hp i T hpos hu b σ hT htb
+      exact absurd hn (Nat.not_le_of_lt (size_pos d))
+  | succ n ih =>
+      intro Γ t τ d hn hp i T hpos hu b σ hT htb
+      have hblin : b.isLinear = true := by
+        rcases Bool.eq_false_or_eq_true b.isLinear with h | h
+        · exact h
+        · rw [nonlinear_tnet b h] at htb; omega
+      have hTlin : T.isLinear = true := by
+        rw [hT]; simp only [Ty.isLinear, hblin, Bool.true_or]
+      have ⟨hfc, hmc⟩ := Path_clean root hp hrf hrm
+      rcases read_locate (size d) d (Nat.le_refl _) i T hpos hu with
+        deep | direct | top
+      · obtain ⟨E, tp, τp, p, hsub, Γv, tv, τv, v, hprem, htv, hτv⟩ := deep
+        obtain ⟨a, hcΓ, hcτ⟩ := var_canonical v htv
+        have hcΓv : Γv = [τv] := hcτ ▸ hcΓ
+        have hp' : Path root p := Path_append d root (sub_path hsub) hp
+        rcases prem_position_class hprem htv hcΓv (b := b) (σ := σ) (hτv.trans hT) htb with
+          ⟨iₚ, hposₚ, huₚ⟩ | ⟨hE, hlami⟩
+        · have hposT : E[iₚ]? = some T := by rw [hτv] at hposₚ; exact hposₚ
+          exact ih (by have hs' := Sub_size hsub; omega) hp' iₚ T hposT huₚ hT htb
+        · exact ⟨Γ, t, τ, d,
+            ChainExit.identityLam d hsub hE hlami⟩
+      · obtain ⟨Γv, tv, τv, v, hprem, htv, hτv⟩ := direct
+        obtain ⟨a, hcΓ, hcτ⟩ := var_canonical v htv
+        have hcΓv : Γv = [τv] := hcτ ▸ hcΓ
+        exact chain_direct root hrf hrm hp T hT htb hblin hTlin hfc hmc
+          (fun {Γ' t' τ'} {d'} hsz hp' i' hpos' hu' =>
+            ih (by omega) hp' i' T hpos' hu' hT htb)
+          v hprem htv hcΓv hτv i hpos hu
+      · obtain ⟨hcΓ, htv, hcτ, hi⟩ := top
+        exact ⟨Γ, t, τ, d, ChainExit.top d hcΓ htv hcτ⟩
 
-1. var-fn: the read is the ARG of a fire whose fn is a var-read, and
-   no origin fires (the arg-type is tnet-nonpositive).
-2. parasite-spine: a spine config whose spine-head's domain is
-   non-linear with `tnet ≤ 0`.
-3. BFree-blocked: a linear redex whose chain to the current anchor is
-   not `BFree` (the congruence cannot lift it).
-4. identity-killer-stuck: the PC-class state at the identity killer
-   `λ(T). var 0` with `tnet T ≤ 0` (the dive lands at itself, every
-   origin sign is stuck).
-
-Their exact statement forms are pinned in `killer_chain`'s exit
-disjunction (below), which the chase's round-map dispatches on.
--/
-
-end Dcare
