@@ -227,4 +227,148 @@ theorem no_vanishing_fixfree_of_chase
     obtain ⟨i, b, hpos, hpos', hu⟩ := stream_origin htl hfc'
     exact hchaseS htl hfc' hmc' i b hpos hpos' hu
 
+/-- Path concatenation. -/
+theorem Path_append {Γc : List Ty} {tc : Term} {τc : Ty} (c : Typed Γc tc τc)
+    {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀) :
+    ∀ {Γ : List Ty} {t : Term} {τ : Ty} {v : Typed Γ t τ}, Path c v → Path root c → Path root v := by
+  intro Γ t τ v hp
+  induction hp with
+  | here => exact fun hpc => hpc
+  | step p s ih => exact fun hpc => Path.step (ih hpc) s
+
+/-- Every subderivation is reachable by a path. -/
+theorem sub_path : ∀ {Γ₁ : List Ty} {t₁ : Term} {τ₁ : Ty} {h : Typed Γ₁ t₁ τ₁}
+    {Γ₂ : List Ty} {t₂ : Term} {τ₂ : Ty} {d : Typed Γ₂ t₂ τ₂}, Sub h d → Path h d := by
+  intro Γ₁ t₁ τ₁ h Γ₂ t₂ τ₂ d s
+  induction s with
+  | lam s ih => exact Path_append _ _ ih (Path.step Path.here Prem.lamP)
+  | appL s ih => exact Path_append _ _ ih (Path.step Path.here Prem.appFP)
+  | appR s ih => exact Path_append _ _ ih (Path.step Path.here Prem.appAP)
+  | pairL s ih => exact Path_append _ _ ih (Path.step Path.here Prem.pairLP)
+  | pairR s ih => exact Path_append _ _ ih (Path.step Path.here Prem.pairRP)
+  | leteT s ih => exact Path_append _ _ ih (Path.step Path.here Prem.leteTP)
+  | leteB s ih => exact Path_append _ _ ih (Path.step Path.here Prem.leteBP)
+  | next s ih => exact Path_append _ _ ih (Path.step Path.here Prem.nextP)
+  | fix s ih => exact Path_append _ _ ih (Path.step Path.here Prem.fixP)
+  | consH s ih => exact Path_append _ _ ih (Path.step Path.here Prem.consHP)
+  | consT s ih => exact Path_append _ _ ih (Path.step Path.here Prem.consTP)
+  | snocT s ih => exact Path_append _ _ ih (Path.step Path.here Prem.snocTP)
+  | snocU s ih => exact Path_append _ _ ih (Path.step Path.here Prem.snocUP)
+  | contr s ih => exact Path_append _ _ ih (Path.step Path.here Prem.contrP)
+  | weak s ih => exact Path_append _ _ ih (Path.step Path.here Prem.weakP)
+  | lamD => exact Path.step Path.here Prem.lamP
+  | appLD => exact Path.step Path.here Prem.appFP
+  | appRD => exact Path.step Path.here Prem.appAP
+  | pairLD => exact Path.step Path.here Prem.pairLP
+  | pairRD => exact Path.step Path.here Prem.pairRP
+  | leteTD => exact Path.step Path.here Prem.leteTP
+  | leteBD => exact Path.step Path.here Prem.leteBP
+  | nextD => exact Path.step Path.here Prem.nextP
+  | fixD => exact Path.step Path.here Prem.fixP
+  | consHD => exact Path.step Path.here Prem.consHP
+  | consTD => exact Path.step Path.here Prem.consTP
+  | snocTD => exact Path.step Path.here Prem.snocTP
+  | snocUD => exact Path.step Path.here Prem.snocUP
+  | contrD => exact Path.step Path.here Prem.contrP
+  | weakD => exact Path.step Path.here Prem.weakP
+
+theorem get?_zero_of_singleton {Γ : List Ty} {c : Ty} (h : Γ = [c]) : Γ[0]? = some c := by
+  rw [h]; exact List.get?_zero_cons'
+
+/-- The read's position at its parent (the position-preimage table, obs
+74's M1): a var-shaped premise reading `a` at `[a]` sits at a concrete
+position of the parent's context — the parent spends it — for every
+SPLIT frame; the `lam` parent is the identity-λ (the read IS the body);
+the `contr`/`lete`-body parents die by length, the content/▷stream
+premise slots die by tnet-positivity. -/
+theorem prem_position : ∀ {E : List Ty} {tc : Term} {τc : Ty} {p : Typed E tc τc}
+    {Γv : List Ty} {tv : Term} {τv : Ty} {v : Typed Γv tv τv}, Prem p v →
+    tv = Term.var 0 → Γv = [τv] → tnet τv > 0 →
+    (∃ (i : Nat), E[i]? = some τv ∧ uses p i ≥ 1)
+    ∨ (E = [] ∧ ∃ (a' : Ty), tc = Term.lam a' (Term.var 0)) := by
+  intro E tc τc p Γv tv τv v s htv hΓ hta
+  have hlin : τv.isLinear = true := by
+    rcases Bool.eq_false_or_eq_true τv.isLinear with h | h
+    · exact h
+    · rw [nonlinear_tnet τv h] at hta; omega
+  match s, htv, hΓ with
+  | @Prem.lamP E' a' b body h, htv, hΓ' =>
+      injection hΓ' with haE hE
+      exact Or.inr ⟨hE, ⟨a', by rw [htv, haE]⟩⟩
+  | @Prem.appFP E' Γ' Δ X b fn arg hf ha hs, _, hΓ' =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [← hs, List.get?_append_lt (by rw [hΓ']; simp)]
+        rw [hΓ']; exact List.get?_zero_cons'
+      · simp only [uses]
+        rw [if_pos (by rw [hΓ']; simp : (0 : Nat) < Γ'.length)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use hf 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.appAP E' Γ' Δ X b fn arg hf ha hs, _, hΓ' =>
+      refine Or.inl ⟨Γ'.length, ?_, ?_⟩
+      · rw [← hs, List.get?_append_ge (Nat.le_refl _)]
+        rw [hΓ']; simp
+      · simp only [uses]
+        rw [if_neg (Nat.not_lt.mpr (Nat.le_refl _)), Nat.sub_self]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use ha 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.pairLP E' Γ' Δ x y l r hl hr hs, _, hΓ' =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [← hs, List.get?_append_lt (by rw [hΓ']; simp)]
+        rw [hΓ']; exact List.get?_zero_cons'
+      · simp only [uses]
+        rw [if_pos (by rw [hΓ']; simp : (0 : Nat) < Γ'.length)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use hl 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.pairRP E' Γ' Δ x y l r hl hr hs, _, hΓ' =>
+      refine Or.inl ⟨Γ'.length, ?_, ?_⟩
+      · rw [← hs, List.get?_append_ge (Nat.le_refl _)]
+        rw [hΓ']; simp
+      · simp only [uses]
+        rw [if_neg (Nat.not_lt.mpr (Nat.le_refl _)), Nat.sub_self]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use hr 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.leteTP E' Γ₁ Γ₂ x y c t body ht hb hs, _, hΓ₁ =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [← hs, List.get?_append_lt (by rw [hΓ₁]; simp)]
+        rw [hΓ₁]; exact List.get?_zero_cons'
+      · simp only [uses]
+        rw [if_pos (by rw [hΓ₁]; simp : (0 : Nat) < Γ₁.length)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use ht 0 _ (get?_zero_of_singleton hΓ₁) hlin))
+  | @Prem.leteBP E' Γ₁ Γ₂ x y c t body ht hb hs, _, hΓ₂ =>
+      have hlen := congrArg List.length hΓ₂
+      simp only [List.length_cons, List.length_nil] at hlen
+      omega
+  | @Prem.nextP E' a' t h, _, hΓ' =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [hΓ']; exact List.get?_zero_cons'
+      · simp only [uses]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.fixP E' a' body hnl h, _, hΓeq =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [hΓeq]; exact List.get?_zero_cons'
+      · simp only [uses]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓeq) hlin))
+  | @Prem.consHP E' Γ' Δ hd tl hc ht hs, _, _ =>
+      have h0 : tnet Ty.content = 0 := rfl
+      rw [h0] at hta; omega
+  | @Prem.consTP E' Γ' Δ hd tl hc ht hs, _, _ =>
+      have h0 : tnet (Ty.later Ty.stream) = 0 := rfl
+      rw [h0] at hta; omega
+  | @Prem.snocTP E' Γ' Δ t u ht hu hs, _, hΓ' =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [← hs, List.get?_append_lt (by rw [hΓ']; simp)]
+        rw [hΓ']; exact List.get?_zero_cons'
+      · simp only [uses]
+        rw [if_pos (by rw [hΓ']; simp : (0 : Nat) < Γ'.length)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use ht 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.snocUP E' Γ' Δ t u ht hu hs, _, _ =>
+      have h0 : tnet Ty.content = 0 := rfl
+      rw [h0] at hta; omega
+  | @Prem.contrP E' k t τ hk h, _, hΓ₂ =>
+      have hlen := congrArg List.length hΓ₂
+      simp only [List.length_cons, List.length_nil] at hlen
+      omega
+  | @Prem.weakP E' k t τ hk h, _, hΓ' =>
+      refine Or.inl ⟨1, ?_, ?_⟩
+      · exact List.get?_succ_cons'.trans (by rw [hΓ']; exact List.get?_zero_cons')
+      · simp only [uses]
+        rw [if_neg (by omega)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓ') hlin))
+
 end Dcare

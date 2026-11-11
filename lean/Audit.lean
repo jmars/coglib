@@ -127,3 +127,7 @@ Rules:
 #print axioms Dcare.reduce_at
 #print axioms Dcare.spendNet_singleton
 #print axioms Dcare.no_vanishing_fixfree_of_chase
+#print axioms Dcare.Path_append
+#print axioms Dcare.sub_path
+#print axioms Dcare.get?_zero_of_singleton
+#print axioms Dcare.prem_position
