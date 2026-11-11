@@ -2336,4 +2336,159 @@ theorem corner_piece {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
     -- in general; the chase's round-map handles it)
     exact Or.inr (Or.inr (Or.inr (Or.inr hreach)))
 
+/-- Sub-or-equal: the chain's exit packages carry the exit node's
+relation to the chain state without the heterogeneous-Eq trap (the
+`d = hw` case is the origin-at-`d`-itself exit; the `Sub` case is the
+deeper exit). -/
+inductive SubEq {Γ₁ : List Ty} {t₁ : Term} {τ₁ : Ty} (d : Typed Γ₁ t₁ τ₁) :
+    {Γ₂ : List Ty} → {t₂ : Term} → {τ₂ : Ty} → Typed Γ₂ t₂ τ₂ → Prop where
+  | sub {Γ₂ : List Ty} {t₂ : Term} {τ₂ : Ty} {hw : Typed Γ₂ t₂ τ₂} : Sub d hw → SubEq d hw
+  | refl : SubEq d d
+
+/-- THE CLASS-FLAVORED `prem_position`: the whole-type positivity is
+replaced by the PC class (the position's type is `arrow b σ` with
+`tnet b > 0`), which is exactly what the killer-chain's state carries —
+its position type's OWN tnet sign is unknown, only the domain's is
+known. The linearity for `single_linear_use` then comes from the
+class's domain. -/
+theorem prem_position_class : ∀ {E : List Ty} {tc : Term} {τc : Ty} {p : Typed E tc τc}
+    {Γv : List Ty} {tv : Term} {τv : Ty} {v : Typed Γv tv τv}, Prem p v →
+    tv = Term.var 0 → Γv = [τv] →
+    ∀ {b σ : Ty}, τv = Ty.arrow b σ → tnet b > 0 →
+    (∃ (i : Nat), E[i]? = some τv ∧ uses p i ≥ 1)
+    ∨ (E = [] ∧ ∃ (a' : Ty), tc = Term.lam a' (Term.var 0)) := by
+  intro E tc τc p Γv tv τv v s htv hΓ
+  intro b σ hτv htb
+  have hblin : b.isLinear = true := by
+    rcases Bool.eq_false_or_eq_true b.isLinear with h | h
+    · exact h
+    · rw [nonlinear_tnet b h] at htb; omega
+  have hlin : τv.isLinear = true := by
+    rw [hτv]; simp only [Ty.isLinear, hblin, Bool.true_or]
+  match s, htv, hΓ with
+  | @Prem.lamP E' a' b' body h, htv, hΓ' =>
+      injection hΓ' with haE hE
+      exact Or.inr ⟨hE, ⟨a', by rw [htv, haE]⟩⟩
+  | @Prem.appFP E' Γ' Δ X b' fn arg hf ha hs, _, hΓ' =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [← hs, List.get?_append_lt (by rw [hΓ']; simp)]
+        rw [hΓ']; exact List.get?_zero_cons'
+      · simp only [uses]
+        rw [if_pos (by rw [hΓ']; simp : (0 : Nat) < Γ'.length)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use hf 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.appAP E' Γ' Δ X b' fn arg hf ha hs, _, hΓ' =>
+      refine Or.inl ⟨Γ'.length, ?_, ?_⟩
+      · rw [← hs, List.get?_append_ge (Nat.le_refl _)]
+        rw [hΓ']; simp
+      · simp only [uses]
+        rw [if_neg (Nat.not_lt.mpr (Nat.le_refl _)), Nat.sub_self]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use ha 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.pairLP E' Γ' Δ x y l r hl hr hs, _, hΓ' =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [← hs, List.get?_append_lt (by rw [hΓ']; simp)]
+        rw [hΓ']; exact List.get?_zero_cons'
+      · simp only [uses]
+        rw [if_pos (by rw [hΓ']; simp : (0 : Nat) < Γ'.length)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use hl 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.pairRP E' Γ' Δ x y l r hl hr hs, _, hΓ' =>
+      refine Or.inl ⟨Γ'.length, ?_, ?_⟩
+      · rw [← hs, List.get?_append_ge (Nat.le_refl _)]
+        rw [hΓ']; simp
+      · simp only [uses]
+        rw [if_neg (Nat.not_lt.mpr (Nat.le_refl _)), Nat.sub_self]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use hr 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.leteTP E' Γ₁ Γ₂ x y c t body ht hb hs, _, hΓ₁ =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [← hs, List.get?_append_lt (by rw [hΓ₁]; simp)]
+        rw [hΓ₁]; exact List.get?_zero_cons'
+      · simp only [uses]
+        rw [if_pos (by rw [hΓ₁]; simp : (0 : Nat) < Γ₁.length)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use ht 0 _ (get?_zero_of_singleton hΓ₁) hlin))
+  | @Prem.leteBP E' Γ₁ Γ₂ x y c t body ht hb hs, _, hΓ₂ =>
+      have hlen := congrArg List.length hΓ₂
+      simp only [List.length_cons, List.length_nil] at hlen
+      omega
+  | @Prem.nextP E' a' t h, _, hΓ' =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [hΓ']; exact List.get?_zero_cons'
+      · simp only [uses]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓ') hlin))
+  | @Prem.fixP E' a' body hnl h, _, hΓeq =>
+      refine Or.inl ⟨0, ?_, ?_⟩
+      · rw [hΓeq]; exact List.get?_zero_cons'
+      · simp only [uses]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓeq) hlin))
+  | @Prem.consHP E' Γ' Δ hd tl hc ht hs, _, _ =>
+      cases hτv
+  | @Prem.consTP E' Γ' Δ hd tl hc ht hs, _, _ =>
+      cases hτv
+  | @Prem.snocTP E' Γ' Δ t u ht hu hs, _, hΓ' =>
+      cases hτv
+  | @Prem.snocUP E' Γ' Δ t u ht hu hs, _, _ =>
+      cases hτv
+  | @Prem.contrP E' k t τ hk h, _, hΓ₂ =>
+      have hlen := congrArg List.length hΓ₂
+      simp only [List.length_cons, List.length_nil] at hlen
+      omega
+  | @Prem.weakP E' k t τ hk h, _, hΓ' =>
+      refine Or.inl ⟨1, ?_, ?_⟩
+      · exact List.get?_succ_cons'.trans (by rw [hΓ']; exact List.get?_zero_cons')
+      · simp only [uses]
+        rw [if_neg (by omega)]
+        exact Nat.le_of_eq (Eq.symm (single_linear_use h 0 _ (get?_zero_of_singleton hΓ') hlin))
+
+/-!
+## THE CHASE PIN (interval 10)
+
+The top-level chase statements, pinned verbatim so every intermediate
+lemma (`killer_chain`, the macro, the ride accounting) is typed against
+the exact consumer. The assembly `no_vanishing_fixfree_of_chase` at the
+top of this file is already WIRED for these shapes — its local
+hypotheses `hchaseT`/`hchaseS` are exactly the statements below. When
+proven, the theorems are DECLARED with these exact statements (names
+`chase_trace` / `chase_stream`) and instantiate the assembly.
+
+```lean
+theorem chase_trace {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d)
+    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (htb : tnet b > 0)
+    (hu : uses d i ≥ 1) : False
+
+theorem chase_stream {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {Γ : List Ty} {t : Term} {d : Typed Γ t (.later Ty.stream)} (hp : Path root d)
+    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (hsb : snet b > 0)
+    (hu : uses d i ≥ 1) : False
+```
+
+THE FUEL (the induction measure): one Nat encoding the lexicographic
+triple LEX(rides, level, size) with GLOBAL bounds — `level := size root −
+size β` (β the state's piece introducer, via `introducer_of_positive`;
+`corner_level_drop` proves the corner's strict drop), `size := size d`,
+and `rides` a strictly decreasing Nat initialized ≤ `size root` (each
+ride event decrements it; the bound rides ≤ size root is maintained by
+decrease alone — no freshness lemma is needed for the arithmetic). The
+encoding: `fuel := rides·(S+1)² + level·(S+1) + size` with
+`S = size root`; corner: level ↓ strict at fixed rides; ride: rides ↓
+at arbitrary level/size; descent: size ↓ at fixed rides+level.
+
+THE QUARTET — the four configs the round-map cannot price; they ride as
+named HYPOTHESES of the chase theorems until the sweep prices them (the
+honest conditional layer — visible in the statement, never silent):
+
+1. var-fn: the read is the ARG of a fire whose fn is a var-read, and
+   no origin fires (the arg-type is tnet-nonpositive).
+2. parasite-spine: a spine config whose spine-head's domain is
+   non-linear with `tnet ≤ 0`.
+3. BFree-blocked: a linear redex whose chain to the current anchor is
+   not `BFree` (the congruence cannot lift it).
+4. identity-killer-stuck: the PC-class state at the identity killer
+   `λ(T). var 0` with `tnet T ≤ 0` (the dive lands at itself, every
+   origin sign is stuck).
+
+Their exact statement forms are pinned in `killer_chain`'s exit
+disjunction (below), which the chase's round-map dispatches on.
+-/
+
 end Dcare

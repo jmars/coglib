@@ -165,3 +165,4 @@ Rules:
 #print axioms Dcare.corner_level_drop
 #print axioms Dcare.consuming_fire
 #print axioms Dcare.corner_piece
+#print axioms Dcare.prem_position_class
