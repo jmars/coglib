@@ -147,5 +147,7 @@ Rules:
 #print axioms Dcare.sub_of_prem
 #print axioms Dcare.root_unit_prem
 #print axioms Dcare.ConsumingPrem
+#print axioms Dcare.RidePrem
 #print axioms Dcare.RootReach
 #print axioms Dcare.value_climb
+#print axioms Dcare.no_root_reach

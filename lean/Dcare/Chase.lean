@@ -1435,17 +1435,52 @@ A value's term-occurrence climbs the parent chain through ride slots
 until a consuming slot — the corner's entry: from the introducer's
 λ-value to the fire that consumes it. -/
 
+/-- The ride slots — the constructive complement of `ConsumingPrem`:
+every non-consuming premise slot, one constructor each. The climb's
+`RootReach` chain records these (no negation, so the dependent
+eliminator never fights the chain's consumers). -/
+inductive RidePrem : {E : List Ty} → {tc : Term} → {τc : Ty} → {c : Typed E tc τc} →
+    {Γ : List Ty} → {t : Term} → {τ : Ty} → {v : Typed Γ t τ} → Prem c v → Prop where
+  | lamP {E : List Ty} {a b : Ty} {body : Term} {h : Typed (a :: E) body b} :
+      RidePrem (Prem.lamP (h := h))
+  | pairLP {E Γ Δ : List Ty} {a b : Ty} {l r : Term} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : RidePrem (Prem.pairLP (hl := hl) (hr := hr) (hs := hs))
+  | pairRP {E Γ Δ : List Ty} {a b : Ty} {l r : Term} {hl : Typed Γ l a} {hr : Typed Δ r b}
+      {hs : Γ ++ Δ = E} : RidePrem (Prem.pairRP (hl := hl) (hr := hr) (hs := hs))
+  | nextP {E : List Ty} {a : Ty} {t : Term} {h : Typed E t a} :
+      RidePrem (Prem.nextP (h := h))
+  | fixP {E : List Ty} {a : Ty} {body : Term} {hΓ : AllNonLinear E}
+      {h : Typed E body (.arrow (.later a) a)} : RidePrem (Prem.fixP (hΓ := hΓ) (h := h))
+  | consHP {E Γ Δ : List Ty} {hd tl : Term} {hc : Typed Γ hd .content}
+      {ht : Typed Δ tl (.later .stream)} {hs : Γ ++ Δ = E} :
+      RidePrem (Prem.consHP (hc := hc) (ht := ht) (hs := hs))
+  | consTP {E Γ Δ : List Ty} {hd tl : Term} {hc : Typed Γ hd .content}
+      {ht : Typed Δ tl (.later .stream)} {hs : Γ ++ Δ = E} :
+      RidePrem (Prem.consTP (hc := hc) (ht := ht) (hs := hs))
+  | snocTP {E Γ Δ : List Ty} {t u : Term} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : RidePrem (Prem.snocTP (ht := ht) (hu := hu) (hs := hs))
+  | snocUP {E Γ Δ : List Ty} {t u : Term} {ht : Typed Γ t .trace} {hu : Typed Δ u .content}
+      {hs : Γ ++ Δ = E} : RidePrem (Prem.snocUP (ht := ht) (hu := hu) (hs := hs))
+  | contrP {E : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed (k :: k :: E) (Term.mergeAt 0 t) τ} :
+      RidePrem (Prem.contrP (hk := hk) (h := h))
+  | weakP {E : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed E t τ} : RidePrem (Prem.weakP (hk := hk) (h := h))
+  | leteBP {E Γ₁ Γ₂ : List Ty} {a b c' : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c'} {hs : Γ₁ ++ Γ₂ = E} :
+      RidePrem (Prem.leteBP (ht := ht) (hb := hb) (hs := hs))
+
 /-- The root-reach chain: the climb's chain of ride slots from `n` up
-to a direct premise of the root (or the root itself) — the stuck case,
-which the corner's consumer refutes via the value's type. -/
+to the root — the stuck case, which the corner's consumer refutes via
+the value's type. Each step records the ride slot and the parent's
+path (for the clean-counters facts the refutation needs at fix frames). -/
 inductive RootReach {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty} (root : Typed Γ₀ t₀ τ₀) :
     {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop where
   | self : RootReach root root
-  | prem {Γ : List Ty} {t : Term} {τ : Ty} (n : Typed Γ t τ) (s : Prem root n) :
-      RootReach root n
   | up {E : List Ty} {tc : Term} {τc : Ty} {c : Typed E tc τc}
       {Γ : List Ty} {t : Term} {τ : Ty} {n : Typed Γ t τ}
-      (s : Prem c n) (r : RootReach root c) : RootReach root n
+      (s : Prem c n) (hride : RidePrem s) (hp : Path root c)
+      (r : RootReach root c) : RootReach root n
 
 /-- THE RIDE-CLIMB: from any node on a path, climbing through ride
 slots reaches a consuming slot — unless the chain rides into the root
@@ -1483,7 +1518,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.lam h, hpc', s', ⟨hcons, sub_of_prem Prem.lamP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.lamP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.lamP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.lamP RidePrem.lamP p hreach))
       | @Prem.pairLP E' Γ' Δ a b l r hl hr hs =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1493,7 +1528,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.pair hl hr hs, hpc', s', ⟨hcons, sub_of_prem Prem.pairLP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.pairLP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.pairLP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.pairLP RidePrem.pairLP p hreach))
       | @Prem.pairRP E' Γ' Δ a b l r hl hr hs =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1503,7 +1538,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.pair hl hr hs, hpc', s', ⟨hcons, sub_of_prem Prem.pairRP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.pairRP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.pairRP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.pairRP RidePrem.pairRP p hreach))
       | @Prem.nextP E' a t' h =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1513,7 +1548,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               hpc', s', ⟨hcons, sub_of_prem Prem.nextP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.nextP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.nextP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.nextP RidePrem.nextP p hreach))
       | @Prem.fixP E' a body hΓ h =>
           -- a fix node on the path contradicts the clean counters
           have hfc := (Path_clean root p hrf hrm).1
@@ -1528,7 +1563,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.cons hc ht hs, hpc', s', ⟨hcons, sub_of_prem Prem.consHP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.consHP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.consHP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.consHP RidePrem.consHP p hreach))
       | @Prem.consTP E' Γ' Δ hd tl hc ht hs =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1538,7 +1573,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.cons hc ht hs, hpc', s', ⟨hcons, sub_of_prem Prem.consTP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.consTP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.consTP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.consTP RidePrem.consTP p hreach))
       | @Prem.snocTP E' Γ' Δ t' u ht hu hs =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1548,7 +1583,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.snoc ht hu hs, hpc', s', ⟨hcons, sub_of_prem Prem.snocTP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.snocTP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.snocTP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.snocTP RidePrem.snocTP p hreach))
       | @Prem.snocUP E' Γ' Δ t' u ht hu hs =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1558,7 +1593,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.snoc ht hu hs, hpc', s', ⟨hcons, sub_of_prem Prem.snocUP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.snocUP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.snocUP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.snocUP RidePrem.snocUP p hreach))
       | @Prem.contrP E' k t' τ' hk h =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1568,7 +1603,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               hpc', s', ⟨hcons, sub_of_prem Prem.contrP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.contrP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.contrP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.contrP RidePrem.contrP p hreach))
       | @Prem.weakP E' k t' τ' hk h =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1578,7 +1613,7 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               hpc', s', ⟨hcons, sub_of_prem Prem.weakP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.weakP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.weakP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.weakP RidePrem.weakP p hreach))
       | @Prem.leteBP E' Γ₁ Γ₂ a b c'' t' body ht hb hs =>
           rcases ih with
             ⟨E'', tc'', τc'', c', hpc', s', hcons⟩
@@ -1588,6 +1623,41 @@ theorem value_climb : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               Typed.lete ht hb hs, hpc', s', ⟨hcons, sub_of_prem Prem.leteBP⟩⟩)
           · refine Or.inr (Or.inl ⟨E'', tc'', τc'', c', Γ₀', t₀', τ₀', n₀,
               hpc', s', ⟨hcons, Sub_trans hsub (sub_of_prem Prem.leteBP)⟩⟩)
-          · exact Or.inr (Or.inr (RootReach.up Prem.leteBP hreach))
+          · exact Or.inr (Or.inr (RootReach.up Prem.leteBP RidePrem.leteBP p hreach))
+
+/-- THE ROOT-REACH REFUTATION: a ride-chain from a non-unit-typed node
+cannot reach the root — the chain's slots are all non-consuming, and a
+unit-root's only non-consuming slot is its lete's body-slot, whose
+child is unit-typed; the non-unit type propagates up every other ride
+slot, and the chain cannot pass the root. This is what lets the
+corner's consumer discard `value_climb`'s third disjunct for an
+arrow-typed introducer. -/
+theorem no_root_reach : ∀ {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {Γ : List Ty} {t : Term} {τ : Ty} {n : Typed Γ t τ},
+    RootReach root n → τ ≠ Ty.unit → False := by
+  intro t₀ root hrf hrm Γ t τ n hr
+  induction hr with
+  | self =>
+      intro hne'
+      exact absurd rfl hne'
+  | @up E tc τc c Γ' t' τ' n' s hride hp r ih =>
+      intro hne'
+      cases hride with
+      | lamP => exact ih (by intro h; cases h)
+      | pairLP => exact ih (by intro h; cases h)
+      | pairRP => exact ih (by intro h; cases h)
+      | nextP => exact ih (by intro h; cases h)
+      | fixP =>
+          have hfc := (Path_clean root hp hrf hrm).1
+          simp only [fixCount] at hfc
+          omega
+      | consHP => exact ih (by intro h; cases h)
+      | consTP => exact ih (by intro h; cases h)
+      | snocTP => exact ih (by intro h; cases h)
+      | snocUP => exact ih (by intro h; cases h)
+      | contrP => exact ih hne'
+      | weakP => exact ih hne'
+      | leteBP => exact ih hne'
 
 end Dcare
