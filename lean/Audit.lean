@@ -163,3 +163,5 @@ Rules:
 #print axioms Dcare.corner_introducer
 #print axioms Dcare.path_size
 #print axioms Dcare.corner_level_drop
+#print axioms Dcare.consuming_fire
+#print axioms Dcare.corner_piece

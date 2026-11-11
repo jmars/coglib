@@ -2199,4 +2199,141 @@ theorem corner_level_drop {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty}
   have hsz : size hf < size β' := Sub_size hchain
   omega
 
+/-! ## THE PIECE-CORNER (the corner round)
+
+The chase's corner at the state's piece introducer: the introducer's
+VALUE (a λ or lete term) is consumed at a fire; when consumed as the
+FN, the fire's ARGUMENT carries the piece type (tnet-positive by the
+state), so the origin at the argument gives the next state, and the
+next introducer (the specialized walk) sits strictly above the fire —
+the size-deficit level strictly drops (`corner_level_drop`). The
+consuming-slot alternatives are the NAMED EXITS the chase's round-map
+dispatches: the killer-of-promise (the value consumed as an ARG — the
+M3-macro entry), the lete-introducer (the class-corner entry), and the
+spine-case (`value_climb`'s deep terminal).
+
+The dispatch helpers below are stated with the premise as a VARIABLE
+index and with clash-free binders, so the plain `cases` arms bind the
+constructor args by their declaration names — the closed-premise /
+stuck-index wall (trap 37/77's family) is avoided by case order, and
+the premise-is-the-fn identification rides the ∃-WITNESS (the premise
+term `v` itself), never an equation.
+-/
+
+/-- CONSUMING-SLOT DISPATCH: a `ConsumingPrem` certificate decomposes
+into the consuming fire's pieces with the path — the premise `v` rides
+as the witness (for appFP, the fire's fn IS `v`, carried with the
+type-cast that the caller discharges by cases; for appAP, its arg IS
+`v`), so no index equation is ever stated. -/
+theorem consuming_fire {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty}
+    (root : Typed Γ₀ t₀ τ₀)
+    {Ec : List Ty} {tcc : Term} {τcc : Ty} (c : Typed Ec tcc τcc)
+    {Γv : List Ty} {tv : Term} {τv : Ty} (v : Typed Γv tv τv)
+    (hpc : Path root c) (s : Prem c v) :
+    ConsumingPrem s →
+    (∃ (Δ : List Ty) (X b : Ty) (arg : Term) (hτ : τv = Ty.arrow X b)
+        (ha : Typed Δ arg X) (hs : Γv ++ Δ = Ec),
+        Path root (Typed.app (hτ ▸ v) ha hs))
+    ∨ (∃ (Γf : List Ty) (b : Ty) (fn : Term) (hf : Typed Γf fn (Ty.arrow τv b))
+          (E'' : List Ty) (hs : Γf ++ Γv = E''),
+        Path root (Typed.app hf v hs))
+    ∨ (∃ (a b : Ty), τv = Ty.tensor a b) := by
+  intro hcons
+  cases hcons with
+  | @appFP _ Δ' X' _ _ arg' hf' ha' hs' =>
+      exact Or.inl ⟨Δ', X', τcc, arg', rfl, ha', hs', hpc⟩
+  | @appAP Γ' _ _ _ fn' _ hf' _ hs' =>
+      exact Or.inr (Or.inl ⟨Γ', τcc, fn', hf', _, hs', hpc⟩)
+  | @leteTP _ _ a' b' _ _ _ _ _ _ =>
+      exact Or.inr (Or.inr ⟨a', b', rfl⟩)
+
+/-- THE CORNER ROUND: from the fire whose fn is the piece's var-read
+(the producer-corner config, `tnet X ≤ 0`), the piece's introducer's
+value's consumer is a fire; the fn-consumer case is the piece-corner
+(the argument carries the piece type — `origin_lemma` gives the next
+state, the specialized walk's next introducer drops the size-deficit
+level). Exits: the killer-of-promise (the value consumed as an ARG),
+the lete-introducer (the class-corner entry — the comp's value analysis
+belongs to the ride-landing machinery), and the spine-case (the
+consuming premise contains the introducer — the mid-spine inner fire). -/
+theorem corner_piece {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {E₀ Γ₀ Δ₀ : List Ty} {X₀ σ₀ : Ty} {arg₀ : Term}
+    {hf₀ : Typed Γ₀ (Term.var 0) (.arrow X₀ σ₀)} {ha₀ : Typed Δ₀ arg₀ X₀}
+    {hs₀ : Γ₀ ++ Δ₀ = E₀}
+    (hpF : Path root (Typed.app hf₀ ha₀ hs₀))
+    {Eβ : List Ty} {tβ : Term} {τβ : Ty} (β : Typed Eβ tβ τβ)
+    (hpβ : Path root β) (hint : Introduces β (.arrow X₀ σ₀))
+    (sβ : Sub β (Typed.app hf₀ ha₀ hs₀))
+    (hX : tnet X₀ ≤ 0) (hta : tnet (.arrow X₀ σ₀) > 0) :
+    (∃ (Δ' : List Ty) (arg' : Term) (ha' : Typed Δ' arg' (.arrow X₀ σ₀))
+        (j : Nat) (b : Ty), Δ'[j]? = some b ∧ tnet b > 0 ∧ uses ha' j ≥ 1 ∧
+      fixCount ha' = 0 ∧ mintCount ha' = 0 ∧ Path root ha' ∧
+      ∃ (E' : List Ty) (tp : Term) (τp : Ty) (β' : Typed E' tp τp),
+        Path root β' ∧ Introduces β' b ∧
+        size root - size β' < size root - size β)
+    ∨ (∃ (Γ' : List Ty) (fn' : Term) (b' : Ty) (hf' : Typed Γ' fn' (Ty.arrow τβ b'))
+          (E'' : List Ty) (hs' : Γ' ++ Eβ = E''),
+        Path root (Typed.app hf' β hs'))
+    ∨ (∃ (x y : Ty), (.arrow X₀ σ₀) = y ∨ (.arrow X₀ σ₀) = x)
+    ∨ (∃ (E' : List Ty) (tc' : Term) (τc' : Ty) (c : Typed E' tc' τc')
+          (Γ₀' : List Ty) (t₀' : Term) (τ₀' : Ty) (n₀ : Typed Γ₀' t₀' τ₀')
+          (hpc : Path root c) (s' : Prem c n₀),
+        ConsumingPrem s' ∧ Sub n₀ β)
+    ∨ RootReach root β := by
+  rcases value_climb root hrf hrm hpβ with
+    ⟨E', tc', τc', c, hpc, s', hcons⟩
+  | ⟨E', tc', τc', c, Γ₀', t₀', τ₀', n₀, hpc, s', hcons', hsub⟩
+  | hreach
+  · -- the direct terminal: dispatch the consuming slot (the helper's
+    -- premise-variable form keeps the elimination off the stuck-index
+    -- wall; the premise β rides as the witness)
+    rcases consuming_fire root c β hpc s' hcons with
+      ⟨Δ', X', b', arg', hτ, ha', hs', hpcw⟩
+    | ⟨Γf, b', fn', hf', E2, hs', hpcw⟩
+    | ⟨a', b'', hτt⟩
+    · -- the fire = Typed.app (hτ ▸ β) ha' hs' — case the introducer's
+      -- kind (β is a variable here, so the elimination runs)
+      cases hint with
+      | @lamI σβ' body' _ hb' =>
+          -- β := Typed.lam hb' — the cast discharges, the fire becomes
+          -- Typed.app (Typed.lam hb') ha' hs'
+          cases hτ
+          have ⟨hfcw, hmcw⟩ := Path_clean root hpcw hrf hrm
+          obtain ⟨hfcw2, hmcw2⟩ := Prem_clean (Prem.appAP (hf := Typed.lam hb') (ha := ha') (hs := hs')) hfcw hmcw
+          obtain ⟨j, b, hpos, htb, hu⟩ := origin_lemma ha' hfcw2 hmcw2 hta
+          rcases corner_introducer root hpcw j b hpos with
+            ⟨k, hk⟩ | ⟨Eβ0, tp, τp, β', hpβ', hint', sβ'F, sβ'w⟩
+          · exact absurd htb (by have hle := root_content_nonpos k b hk; omega)
+          · refine Or.inl ⟨Δ', arg', ha', j, b, hpos, htb, hu, hfcw2, hmcw2,
+              Path.step hpcw Prem.appAP, Eβ0, tp, τp, β', hpβ', hint', ?_⟩
+            · exact corner_level_drop root hpβ' sβ'F
+      | @leteIY Γ₁' Γ₂' x' _ _ s' body' ht' hb' hsβ' =>
+          -- the lete-introducer: the class-corner entry
+          exact Or.inr (Or.inr (Or.inl ⟨x', (.arrow X₀ σ₀), Or.inl rfl⟩))
+      | @leteIX Γ₁' Γ₂' _ y'' _ s' body' ht' hb' hsβ' =>
+          -- the other component — same entry, the x-side
+          exact Or.inr (Or.inr (Or.inl ⟨(.arrow X₀ σ₀), y'', Or.inr rfl⟩))
+    · -- the killer-of-promise: β's value consumed as an ARG — the
+      -- M3-macro entry, a named exit (the fire = Typed.app hf' β hs')
+      exact Or.inr (Or.inl ⟨Γf, fn', b', hf', E2, hs', hpcw⟩)
+    · -- the scrutinee is β — the ride-landing, emitted as the
+      -- class-corner entry (the lam-scrutinee is type-blocked: the
+      -- tensor/arrow mismatch refutes it via hτt)
+      cases hint with
+      | @lamI σβ' body' _ hb' =>
+          -- the scrutinee's tensor type vs the lam's arrow type
+          cases hτt
+      | @leteIY Γ₁' Γ₂' x' _ _ s' body' ht' hb' hsβ' =>
+          exact Or.inr (Or.inr (Or.inl ⟨x', (.arrow X₀ σ₀), Or.inl rfl⟩))
+      | @leteIX Γ₁' Γ₂' _ y'' _ s' body' ht' hb' hsβ' =>
+          exact Or.inr (Or.inr (Or.inl ⟨(.arrow X₀ σ₀), y'', Or.inr rfl⟩))
+  · -- the spine-case exit (the consuming premise contains the introducer)
+    exact Or.inr (Or.inr (Or.inr (Or.inl ⟨E', tc', τc', c, Γ₀', t₀', τ₀', n₀, hpc, s', hcons', hsub⟩)))
+  · -- the RootReach case: the ride-chain reached the root — a named
+    -- exit (a λ-introducer's type is an arrow, never unit — but a
+    -- lete-introducer CAN conclude unit, so the chain is not refutable
+    -- in general; the chase's round-map handles it)
+    exact Or.inr (Or.inr (Or.inr (Or.inr hreach)))
+
 end Dcare
