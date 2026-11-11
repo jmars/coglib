@@ -141,3 +141,6 @@ Rules:
 #print axioms Dcare.killer_step
 #print axioms Dcare.config_lete_elim
 #print axioms Dcare.uses_sub_ge_or_binder
+#print axioms Dcare.uses_zero_of_ge_length
+#print axioms Dcare.Sub_irrefl
+#print axioms Dcare.uses_sub_le
