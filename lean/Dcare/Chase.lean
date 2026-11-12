@@ -2887,3 +2887,65 @@ theorem killer_chain {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
               rw [List.get?_succ_cons', List.get?_nil'] at hpos
               contradiction
 
+/-!
+## THE CHASE PIN (interval 10, restored interval 11)
+
+The top-level chase statements, pinned verbatim so every intermediate
+lemma (`killer_chain`, the macro, the ride accounting) is typed against
+the exact consumer. The assembly `no_vanishing_fixfree_of_chase` at the
+top of this file is already WIRED for these shapes — its local
+hypotheses `hchaseT`/`hchaseS` are exactly the statements below. When
+proven, the theorems are DECLARED with these exact statements (names
+`chase_trace` / `chase_stream`) and instantiate the assembly with a
+single `:=`.
+
+```lean
+theorem chase_trace {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {Γ : List Ty} {t : Term} {τ : Ty} {d : Typed Γ t τ} (hp : Path root d)
+    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (htb : tnet b > 0)
+    (hu : uses d i ≥ 1) : False
+
+theorem chase_stream {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
+    (hrf : fixCount root = 0) (hrm : mintCount root = 0)
+    {Γ : List Ty} {t : Term} {d : Typed Γ t (.later Ty.stream)} (hp : Path root d)
+    (i : Nat) (b : Ty) (hpos : Γ[i]? = some b) (hsb : snet b > 0)
+    (hu : uses d i ≥ 1) : False
+```
+
+THE FUEL (the induction measure): one Nat encoding the lexicographic
+triple LEX(rides, level, size) with GLOBAL bounds — `level := size root −
+size β` (β the state's piece introducer, via `introducer_of_positive`;
+`corner_level_drop` proves the corner's strict drop), `size := size d`,
+and `rides` a strictly decreasing Nat initialized ≤ `size root` (each
+ride event decrements it; the bound rides ≤ size root is maintained by
+decrease alone — no freshness lemma is needed for the arithmetic). The
+encoding: `fuel := rides·(S+1)² + level·(S+1) + size` with
+`S = size root`; corner: level ↓ strict at fixed rides; ride: rides ↓
+at arbitrary level/size; descent: size ↓ at fixed rides+level.
+
+THE QUARTET — the four configs the round-map cannot price; they ride as
+named HYPOTHESES of the chase theorems until the sweep prices them (the
+honest conditional layer — visible in the statement, never silent):
+
+1. var-fn: the read is the ARG of a fire whose fn is a var-read, and
+   no origin fires (the arg-type is tnet-nonpositive).
+2. parasite-spine: a spine config whose spine-head's domain is
+   non-linear with `tnet ≤ 0`.
+3. BFree-blocked: a linear redex whose chain to the current anchor is
+   not `BFree` (the congruence cannot lift it).
+4. identity-killer-stuck: the PC-class state at the identity killer
+   `λ(T). var 0` with `tnet T ≤ 0` (the dive lands at itself, every
+   origin sign is stuck).
+
+The transparent-killer configs (`ChainExit.killerOther`) are NOT a
+fifth hypothesis: they are priced INSIDE the macro as a plain descent
+(the frame's premise is strictly smaller than the fire, and the position
+image rides the same `pos_image` arithmetic as D1's sibling side).
+
+Their exact statement forms are pinned in `killer_chain`'s exit
+disjunction (above), which the chase's round-map dispatches on.
+-/
+
+end Dcare
+
