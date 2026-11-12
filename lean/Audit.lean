@@ -1,3 +1,4 @@
+import Dcare.Chase
 import Dcare.T1
 import Dcare.T3
 import Dcare.T2
@@ -122,3 +123,50 @@ Rules:
 #print axioms Dcare.term_transport
 #print axioms Dcare.linear_cut
 #print axioms Dcare.linear_beta_splice
+#print axioms Dcare.rebuild_along
+#print axioms Dcare.reduce_at
+#print axioms Dcare.spendNet_singleton
+#print axioms Dcare.no_vanishing_fixfree_of_chase
+#print axioms Dcare.Path_append
+#print axioms Dcare.sub_path
+#print axioms Dcare.get?_zero_of_singleton
+#print axioms Dcare.prem_position
+#print axioms Dcare.liftAt0_ne_var0
+#print axioms Dcare.var_canonical
+#print axioms Dcare.chase_step
+#print axioms Dcare.root_content_nonpos
+#print axioms Dcare.introducer_of_positive
+#print axioms Dcare.config_fn_positive_arg
+#print axioms Dcare.config_arg_lam_killer
+#print axioms Dcare.killer_step
+#print axioms Dcare.config_lete_elim
+#print axioms Dcare.uses_sub_ge_or_binder
+#print axioms Dcare.uses_zero_of_ge_length
+#print axioms Dcare.Sub_irrefl
+#print axioms Dcare.uses_sub_le
+#print axioms Dcare.sub_of_prem
+#print axioms Dcare.root_unit_prem
+#print axioms Dcare.ConsumingPrem
+#print axioms Dcare.RidePrem
+#print axioms Dcare.RootReach
+#print axioms Dcare.value_climb
+#print axioms Dcare.no_root_reach
+#print axioms Dcare.Slot
+#print axioms Dcare.SlotsOf
+#print axioms Dcare.path_slots
+#print axioms Dcare.slots_of_append
+#print axioms Dcare.SubLen
+#print axioms Dcare.sub_len_exists
+#print axioms Dcare.sub_len_trans
+#print axioms Dcare.path_append_assoc
+#print axioms Dcare.sub_path_trans
+#print axioms Dcare.corner_introducer
+#print axioms Dcare.path_size
+#print axioms Dcare.corner_level_drop
+#print axioms Dcare.consuming_fire
+#print axioms Dcare.corner_piece
+#print axioms Dcare.prem_position_class
+#print axioms Dcare.spine_exit
+#print axioms Dcare.killer_step_gen
+#print axioms Dcare.chain_direct
+#print axioms Dcare.killer_chain
