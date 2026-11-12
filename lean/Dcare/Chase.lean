@@ -2247,15 +2247,21 @@ theorem consuming_fire {Γ₀ : List Ty} {t₀ : Term} {τ₀ : Ty}
   | @leteTP _ _ a' b' _ _ _ _ _ _ =>
       exact Or.inr (Or.inr ⟨a', b', rfl⟩)
 
-/-- THE CORNER ROUND: from the fire whose fn is the piece's var-read
-(the producer-corner config, `tnet X ≤ 0`), the piece's introducer's
-value's consumer is a fire; the fn-consumer case is the piece-corner
-(the argument carries the piece type — `origin_lemma` gives the next
-state, the specialized walk's next introducer drops the size-deficit
-level). Exits: the killer-of-promise (the value consumed as an ARG),
-the lete-introducer (the class-corner entry — the comp's value analysis
-belongs to the ride-landing machinery), and the spine-case (the
-consuming premise contains the introducer — the mid-spine inner fire). -/
+/-- THE CORNER ROUND: from the fire whose fn is the piece's var-read,
+the piece's introducer's value's consumer is a fire; the fn-consumer
+case is the piece-corner (the argument carries the piece type —
+`origin_lemma` gives the next state, the specialized walk's next
+introducer drops the size-deficit level). Exits: the killer-of-promise
+(the value consumed as an ARG), the lete-introducer (the class-corner
+entry — the comp's value analysis belongs to the ride-landing
+machinery), and the spine-case (the consuming premise contains the
+introducer — the mid-spine inner fire).
+
+NOTE (interval 12): no hypothesis on the ARG-type's sign — the corner
+applies at EVERY fire-whose-fn-is-the-read config. The piece-corner
+exit prices the descent strictly better than the direct origin-at-arg
+(the new introducer sits above the CONSUMER fire, level ↓ strict via
+`corner_level_drop`, vs the arg-origin's level-↓-or-equal). -/
 theorem corner_piece {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
     (hrf : fixCount root = 0) (hrm : mintCount root = 0)
     {E₀ Γ₀ Δ₀ : List Ty} {X₀ σ₀ : Ty} {arg₀ : Term}
@@ -2265,7 +2271,7 @@ theorem corner_piece {t₀ : Term} (root : Typed [Ty.content] t₀ Ty.unit)
     {Eβ : List Ty} {tβ : Term} {τβ : Ty} (β : Typed Eβ tβ τβ)
     (hpβ : Path root β) (hint : Introduces β (.arrow X₀ σ₀))
     (sβ : Sub β (Typed.app hf₀ ha₀ hs₀))
-    (hX : tnet X₀ ≤ 0) (hta : tnet (.arrow X₀ σ₀) > 0) :
+    (hta : tnet (.arrow X₀ σ₀) > 0) :
     (∃ (Δ' : List Ty) (arg' : Term) (ha' : Typed Δ' arg' (.arrow X₀ σ₀))
         (j : Nat) (b : Ty), Δ'[j]? = some b ∧ tnet b > 0 ∧ uses ha' j ≥ 1 ∧
       fixCount ha' = 0 ∧ mintCount ha' = 0 ∧ Path root ha' ∧
