@@ -4,7 +4,7 @@
 
 **Status labels.** Every load-bearing claim carries one of: **[MEASURED]** (machine-checked in the accompanying Lean development; theorem name given in parentheses), **[INTERPRETATION]** (a reading of the formal results), **[PROJECTION]** (a prediction nothing here exercises). Negative results are labeled and published as results.
 
-**Accompanying artifact.** A Lean 4 development (207 machine-checked theorem declarations at time of writing; the two classical linearity statements — the grammar's no-cloning and unitarity laws, §5.4 — as named conjectures with five proven fragment strengths, the deepest two integrating the care machinery). Theorem names appear in parentheses and match the development verbatim; the audit is mechanical (§15).
+**Accompanying artifact.** A Lean 4 development (235 machine-checked theorem declarations at time of writing; the two classical linearity statements — the grammar's no-cloning and unitarity laws, §5.4 — as named conjectures with five proven fragment strengths, the deepest two integrating the care machinery). Theorem names appear in parentheses and match the development verbatim; the audit is mechanical (§15).
 
 ---
 
@@ -327,7 +327,7 @@ Experiment 1 (Prompt 4) probes exactly this discipline. **The sample/proof asymm
 
 ## 15. Mechanization manifest
 
-Lean 4 (4.35.0), no external dependencies (no Mathlib — deliberately). 207 theorem declarations verified (113 in the named audit); axioms beyond the standard three (`propext`, `Classical.choice`, `Quot.sound`): none, per-theorem in the audit. The repository gate enforces mechanically: no `sorry` outside the two named conjectures; the theorem that "the paper does not depend on the collaboration" (no `T2_postulate` axiom anywhere); the confidential companion compiles separately and is referenced by no public file. Anchors in this paper are the theorem names; a cross-check script for this paper's anchors is scheduled but not yet written — until it lands, the anchor audit is by inspection (the companion paper's sync gate covers the shared anchors).
+Lean 4 (4.35.0), no external dependencies (no Mathlib — deliberately). 235 theorem declarations verified (145 in the named audit); axioms beyond the standard three (`propext`, `Classical.choice`, `Quot.sound`): none, per-theorem in the audit. The repository gate enforces mechanically: no `sorry` outside the two named conjectures; the theorem that "the paper does not depend on the collaboration" (no `T2_postulate` axiom anywhere); the confidential companion compiles separately and is referenced by no public file. Anchors in this paper are the theorem names; a cross-check script for this paper's anchors is scheduled but not yet written — until it lands, the anchor audit is by inspection (the companion paper's sync gate covers the shared anchors).
 
 ## 16. Tiered disclosure note
 
