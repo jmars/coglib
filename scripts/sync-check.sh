@@ -20,13 +20,21 @@ fi
 
 FAIL=0
 TOTAL=0
+FRAG=0
 for name in $CANDIDATES; do
+  case "$name" in
+    _*)
+      echo "FRAGMENT: \`$name\` is a suffix shorthand, not a declaration name — not checked"
+      FRAG=$((FRAG + 1))
+      continue
+      ;;
+  esac
   TOTAL=$((TOTAL + 1))
-  if rg -q "theorem $name\b|def $name\b|inductive $name\b|structure $name\b|abbrev $name\b|class $name\b" lean/Dcare/*.lean 2>/dev/null; then
+  if rg -qU "(theorem|def|inductive|structure|abbrev|class)\s+$name\b" --glob '*.lean' lean/Dcare 2>/dev/null; then
     :
   else
     # Check if it's a constructor name (inductive constructor patterns)
-    if rg -q "\| $name\b" lean/Dcare/*.lean 2>/dev/null; then
+    if rg -q "\| $name\b" --glob '*.lean' lean/Dcare 2>/dev/null; then
       :
     else
       echo "FAIL: \`$name\` cited in paper but not found as a declaration in lean/Dcare/"
@@ -36,7 +44,7 @@ for name in $CANDIDATES; do
 done
 
 if [ "$FAIL" -eq 0 ]; then
-  echo "PASS sync-check: $TOTAL anchors all match declarations"
+  echo "PASS sync-check: $TOTAL anchors all match declarations ($FRAG fragment(s) not checked)"
 else
   echo "FAIL sync-check: dead anchors found"
   exit 1

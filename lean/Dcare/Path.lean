@@ -4488,4 +4488,1507 @@ theorem stream_origin {Γ : List Ty} {t : Term}
   omega
 
 
+/-! ## The escape forms (tpropF / spropF) and the DeepConsume supply lemma —
+    drafted by the coder agent against this tree, transfer-landed. -/
+
+
+/-! ## (a) The stream-need escape: fixpoints only -/
+
+/-- A fix node inside the derivation whose PAYLOAD carries the stream
+need. `NeedsS (▷a) = NeedsS a` makes the fix's own delayed binder the
+carrier, while the body's type `arrow (▷a) a` self-negates
+(`NeedsS (arrow (▷a) a) = NeedsS a ∧ ¬NeedsS a ∧ …` = False) — so a fix
+is a stream-need SOURCE, not a conduit. -/
+inductive FixNeedS : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop
+  | here {Γ : List Ty} {a : Ty} {body : Term} (hΓ : AllNonLinear Γ)
+      (h : Typed Γ body (.arrow (.later a) a)) (hn : NeedsS a) :
+      FixNeedS (Typed.fix hΓ h)
+  | lam {Γ : List Ty} {a b : Ty} {body : Term} {h : Typed (a :: Γ) body b} :
+      FixNeedS h → FixNeedS (Typed.lam h)
+  | appL {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      FixNeedS hf → FixNeedS (Typed.app hf ha hs)
+  | appR {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      FixNeedS ha → FixNeedS (Typed.app hf ha hs)
+  | pairL {E Γ Δ : List Ty} {a b : Ty} {l r : Term}
+      {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E} :
+      FixNeedS hl → FixNeedS (Typed.pair hl hr hs)
+  | pairR {E Γ Δ : List Ty} {a b : Ty} {l r : Term}
+      {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E} :
+      FixNeedS hr → FixNeedS (Typed.pair hl hr hs)
+  | leteT {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c}
+      {hs : Γ₁ ++ Γ₂ = E} :
+      FixNeedS ht → FixNeedS (Typed.lete ht hb hs)
+  | leteB {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c}
+      {hs : Γ₁ ++ Γ₂ = E} :
+      FixNeedS hb → FixNeedS (Typed.lete ht hb hs)
+  | next {Γ : List Ty} {a : Ty} {t : Term} {h : Typed Γ t a} :
+      FixNeedS h → FixNeedS (Typed.next h)
+  | consT {E Γ Δ : List Ty} {hd tl : Term}
+      {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} :
+      FixNeedS ht → FixNeedS (Typed.cons hc ht hs)
+  | contr {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed (k :: k :: Γ) (Term.mergeAt 0 t) τ} :
+      FixNeedS h → FixNeedS (Typed.contr hk h)
+  | weak {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed Γ t τ} :
+      FixNeedS h → FixNeedS (Typed.weak hk h)
+
+/-- STREAM-NEED PROPAGATION, disjunctive escape: a stream-needing
+conclusion is supplied by its context, or the derivation contains a
+fixpoint whose payload carries the need. No side condition. -/
+theorem spropF : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    NeedsS τ → (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ SSupply b) ∨ FixNeedS h
+  | _, _, _, Typed.var, hK => Or.inl ⟨0, _, List.get?_zero_cons', Or.inl hK⟩
+  | _, _, _, @Typed.lam Γ a b _ h, ⟨hb, hna, hnk⟩ => by
+      rcases spropF h hb with hs | hesc
+      · match hs with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hs' | hk'
+            · exact (hna hs').elim
+            · exact (hnk hk').elim
+        | ⟨n + 1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons'] at hpos
+            exact Or.inl ⟨n, b', hpos, hsup⟩
+      · exact Or.inr (FixNeedS.lam hesc)
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hK => by
+      by_cases hx : NeedsS X
+      · rcases spropF ha hx with hs' | hesc
+        · match hs' with
+          | ⟨j, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨Γ.length + j, b', ?_, hsup⟩
+              rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+                Nat.add_sub_cancel_left]
+              exact hpos
+        · exact Or.inr (FixNeedS.appR hesc)
+      · by_cases hk : NeedsK X
+        · obtain ⟨j, b', hpos, hsup⟩ := kprop ha hk
+          refine Or.inl ⟨Γ.length + j, b', ?_, Or.inr hsup⟩
+          rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+            Nat.add_sub_cancel_left]
+          exact hpos
+        · rcases spropF hf ⟨hK, hx, hk⟩ with hs'' | hesc
+          · match hs'' with
+            | ⟨i, b', hpos, hsup⟩ =>
+                refine Or.inl ⟨i, b', ?_, hsup⟩
+                have hlt : i < Γ.length := List.get?_some_lt hpos
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos
+          · exact Or.inr (FixNeedS.appL hesc)
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hK => by
+      rcases hK with hK | hK
+      · rcases spropF hl hK with hs' | hesc
+        · match hs' with
+          | ⟨i, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨i, b', ?_, hsup⟩
+              have hlt : i < Γ.length := List.get?_some_lt hpos
+              rw [← hs, List.get?_append_lt hlt]
+              exact hpos
+        · exact Or.inr (FixNeedS.pairL hesc)
+      · rcases spropF hr hK with hs' | hesc
+        · match hs' with
+          | ⟨j, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨Γ.length + j, b', ?_, hsup⟩
+              rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+                Nat.add_sub_cancel_left]
+              exact hpos
+        · exact Or.inr (FixNeedS.pairR hesc)
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hK => by
+      rcases spropF hb hK with hs' | hesc
+      · match hs' with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hs'' | hk'
+            · rcases spropF ht (Or.inr hs'') with ⟨i, b₂, hpos₂, hsup₂⟩ | hesc
+              · have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+                refine Or.inl ⟨i, b₂, ?_, hsup₂⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+              · exact Or.inr (FixNeedS.leteT hesc)
+            · obtain ⟨i, b₂, hpos₂, hsup₂⟩ := kprop ht (Or.inr hk')
+              have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+              refine Or.inl ⟨i, b₂, ?_, Or.inr hsup₂⟩
+              rw [← hs, List.get?_append_lt hlt]
+              exact hpos₂
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hs'' | hk'
+            · rcases spropF ht (Or.inl hs'') with ⟨i, b₂, hpos₂, hsup₂⟩ | hesc
+              · have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+                refine Or.inl ⟨i, b₂, ?_, hsup₂⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+              · exact Or.inr (FixNeedS.leteT hesc)
+            · obtain ⟨i, b₂, hpos₂, hsup₂⟩ := kprop ht (Or.inl hk')
+              have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+              refine Or.inl ⟨i, b₂, ?_, Or.inr hsup₂⟩
+              rw [← hs, List.get?_append_lt hlt]
+              exact hpos₂
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            refine Or.inl ⟨Γ₁.length + m, b', ?_, hsup⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ₁.length m),
+              Nat.add_sub_cancel_left]
+            exact hpos
+      · exact Or.inr (FixNeedS.leteB hesc)
+  | _, _, _, Typed.unit, hK => False.elim hK
+  | _, _, _, @Typed.next _ _ _ h, hK => by
+      rcases spropF h hK with hs | hesc
+      · exact Or.inl hs
+      · exact Or.inr (FixNeedS.next hesc)
+  | _, _, _, @Typed.fix Γ a body hΓ h, hn => Or.inr (FixNeedS.here hΓ h hn)
+  | _, _, _, @Typed.cons _ Γ Δ hd tl hc' ht hs, _ => by
+      rcases spropF ht True.intro with hs' | hesc
+      · match hs' with
+        | ⟨j, b', hpos, hsup⟩ =>
+            refine Or.inl ⟨Γ.length + j, b', ?_, hsup⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+      · exact Or.inr (FixNeedS.consT hesc)
+  | _, _, _, Typed.nil, hK => False.elim hK
+  | _, _, _, @Typed.snoc _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.gen, hK => (hK.2.2 True.intro).elim
+  | _, _, _, Typed.red, ⟨hb, _, _⟩ => False.elim hb
+  | _, _, _, Typed.obj, ⟨hb, _, _⟩ => False.elim hb
+  | _, _, _, Typed.terminate, ⟨hb, _, _⟩ => False.elim hb
+  | _, _, _, @Typed.contr Γ k t τ hk h, hK => by
+      rcases spropF h hK with hs | hesc
+      · match hs with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            exact Or.inl ⟨m + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (FixNeedS.contr hesc)
+  | _, _, _, @Typed.weak Γ k t τ hk h, hK => by
+      rcases spropF h hK with hs | hesc
+      · match hs with
+        | ⟨i, b', hpos, hsup⟩ =>
+            exact Or.inl ⟨i + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (FixNeedS.weak hesc)
+
+/-! ## The T3 falsifier: the fix-only TRACE escape is false -/
+
+/-- The fix-only escape as a bare Prop (data discarded — enough to state
+the refuted form). -/
+def HasFixT : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop
+  | _, _, _, @Typed.fix _ a _ _ h => NeedsT a ∨ HasFixT h
+  | _, _, _, @Typed.lam _ _ _ _ h => HasFixT h
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _ => HasFixT hf ∨ HasFixT ha
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _ => HasFixT hl ∨ HasFixT hr
+  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _ => HasFixT ht ∨ HasFixT hb
+  | _, _, _, @Typed.next _ _ _ h => HasFixT h
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht _ => HasFixT hc ∨ HasFixT ht
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _ => HasFixT ht ∨ HasFixT hu
+  | _, _, _, @Typed.contr _ _ _ _ _ h => HasFixT h
+  | _, _, _, @Typed.weak _ _ _ _ _ h => HasFixT h
+  | _, _, _, _ => False
+
+/-- T3 (kernel): the fix-only trace escape — no side condition — is
+FALSE. `nil : [] ⊢ trace` needs a trace, has no supply, and contains no
+fixpoint: the mint is the missing disjunct. This is why `tpropF` carries
+`TraceSource` (mints included) rather than a fix-only escape. -/
+theorem tprop_fixonly_refuted :
+    ¬ (∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ), NeedsT τ →
+        (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ TSupply b) ∨ HasFixT h) := by
+  intro hall
+  rcases hall Typed.nil True.intro with ⟨i, b, hpos, _⟩ | hfix
+  · simp at hpos
+  · exact hfix
+
+/-! ## (b) The full trace-need escape: mints and fixpoints -/
+
+/-- A trace-SOURCE inside the derivation: a `nil` or `terminate` (trace
+MINTS — a trace from nothing) or a fix node whose payload carries the
+trace need. These are exactly the nodes `tracePure` counts. -/
+inductive TraceSource : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop
+  | mintNil : TraceSource Typed.nil
+  | mintTerminate : TraceSource Typed.terminate
+  | fixHere {Γ : List Ty} {a : Ty} {body : Term} (hΓ : AllNonLinear Γ)
+      (h : Typed Γ body (.arrow (.later a) a)) (hn : NeedsT a) :
+      TraceSource (Typed.fix hΓ h)
+  | lam {Γ : List Ty} {a b : Ty} {body : Term} {h : Typed (a :: Γ) body b} :
+      TraceSource h → TraceSource (Typed.lam h)
+  | appL {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      TraceSource hf → TraceSource (Typed.app hf ha hs)
+  | appR {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      TraceSource ha → TraceSource (Typed.app hf ha hs)
+  | pairL {E Γ Δ : List Ty} {a b : Ty} {l r : Term}
+      {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E} :
+      TraceSource hl → TraceSource (Typed.pair hl hr hs)
+  | pairR {E Γ Δ : List Ty} {a b : Ty} {l r : Term}
+      {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E} :
+      TraceSource hr → TraceSource (Typed.pair hl hr hs)
+  | leteT {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c}
+      {hs : Γ₁ ++ Γ₂ = E} :
+      TraceSource ht → TraceSource (Typed.lete ht hb hs)
+  | leteB {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c}
+      {hs : Γ₁ ++ Γ₂ = E} :
+      TraceSource hb → TraceSource (Typed.lete ht hb hs)
+  | next {Γ : List Ty} {a : Ty} {t : Term} {h : Typed Γ t a} :
+      TraceSource h → TraceSource (Typed.next h)
+  | consT {E Γ Δ : List Ty} {hd tl : Term}
+      {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} :
+      TraceSource ht → TraceSource (Typed.cons hc ht hs)
+  | snocT {E Γ Δ : List Ty} {t u : Term}
+      {ht : Typed Γ t .trace} {hu : Typed Δ u .content} {hs : Γ ++ Δ = E} :
+      TraceSource ht → TraceSource (Typed.snoc ht hu hs)
+  | contr {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed (k :: k :: Γ) (Term.mergeAt 0 t) τ} :
+      TraceSource h → TraceSource (Typed.contr hk h)
+  | weak {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed Γ t τ} :
+      TraceSource h → TraceSource (Typed.weak hk h)
+
+/-- TRACE-NEED PROPAGATION, disjunctive escape (full form): a
+trace-needing conclusion is supplied by its context, or the derivation
+contains a trace-mint (`nil`/`terminate`) or a fixpoint whose payload
+carries the need. No side condition — this is `tprop` with `tracePure`
+discharged into the conclusion. -/
+theorem tpropF : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    NeedsT τ → (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ TSupply b) ∨ TraceSource h
+  | _, _, _, Typed.var, hK => Or.inl ⟨0, _, List.get?_zero_cons', Or.inl hK⟩
+  | _, _, _, @Typed.lam Γ a b _ h, ⟨hb, hna⟩ => by
+      rcases tpropF h hb with hs | hesc
+      · match hs with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with ht | hc | hk'
+            · exact (hna (Or.inl ht)).elim
+            · exact (hna (Or.inr (Or.inl hc))).elim
+            · exact (hna (Or.inr (Or.inr hk'))).elim
+        | ⟨n + 1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons'] at hpos
+            exact Or.inl ⟨n, b', hpos, hsup⟩
+      · exact Or.inr (TraceSource.lam hesc)
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hK => by
+      by_cases hx : NeedsT X
+      · rcases tpropF ha hx with hs' | hesc
+        · match hs' with
+          | ⟨j, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨Γ.length + j, b', ?_, hsup⟩
+              rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+                Nat.add_sub_cancel_left]
+              exact hpos
+        · exact Or.inr (TraceSource.appR hesc)
+      · by_cases hcc : NeedsC X
+        · obtain ⟨j, b', hpos, hsup⟩ := cprop ha hcc
+          rcases hsup with hc'' | hk''
+          · refine Or.inl ⟨Γ.length + j, b', ?_, Or.inr (Or.inl hc'')⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+          · refine Or.inl ⟨Γ.length + j, b', ?_, Or.inr (Or.inr hk'')⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+        · by_cases hk : NeedsK X
+          · obtain ⟨j, b', hpos, hsup⟩ := kprop ha hk
+            refine Or.inl ⟨Γ.length + j, b', ?_, Or.inr (Or.inr hsup)⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+          · rcases tpropF hf ⟨hK, by
+              intro hs'; rcases hs' with h | h | h
+              · exact hx h
+              · exact hcc h
+              · exact hk h⟩ with hs'' | hesc
+            · match hs'' with
+              | ⟨i, b', hpos, hsup⟩ =>
+                  refine Or.inl ⟨i, b', ?_, hsup⟩
+                  have hlt : i < Γ.length := List.get?_some_lt hpos
+                  rw [← hs, List.get?_append_lt hlt]
+                  exact hpos
+            · exact Or.inr (TraceSource.appL hesc)
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hK => by
+      rcases hK with hK | hK
+      · rcases tpropF hl hK with hs' | hesc
+        · match hs' with
+          | ⟨i, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨i, b', ?_, hsup⟩
+              have hlt : i < Γ.length := List.get?_some_lt hpos
+              rw [← hs, List.get?_append_lt hlt]
+              exact hpos
+        · exact Or.inr (TraceSource.pairL hesc)
+      · rcases tpropF hr hK with hs' | hesc
+        · match hs' with
+          | ⟨j, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨Γ.length + j, b', ?_, hsup⟩
+              rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+                Nat.add_sub_cancel_left]
+              exact hpos
+        · exact Or.inr (TraceSource.pairR hesc)
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hK => by
+      rcases tpropF hb hK with hs' | hesc
+      · match hs' with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with ht' | hc' | hk'
+            · rcases tpropF ht (Or.inr ht') with ⟨i, b₂, hpos₂, hsup₂⟩ | hesc
+              · have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+                refine Or.inl ⟨i, b₂, ?_, hsup₂⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+              · exact Or.inr (TraceSource.leteT hesc)
+            · obtain ⟨i, b₂, hpos₂, hsup₂⟩ := cprop ht (Or.inr hc')
+              have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+              rcases hsup₂ with hc'' | hk''
+              · refine Or.inl ⟨i, b₂, ?_, Or.inr (Or.inl hc'')⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+              · refine Or.inl ⟨i, b₂, ?_, Or.inr (Or.inr hk'')⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+            · obtain ⟨i, b₂, hpos₂, hsup₂⟩ := kprop ht (Or.inr hk')
+              have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+              refine Or.inl ⟨i, b₂, ?_, Or.inr (Or.inr hsup₂)⟩
+              rw [← hs, List.get?_append_lt hlt]
+              exact hpos₂
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with ht' | hc' | hk'
+            · rcases tpropF ht (Or.inl ht') with ⟨i, b₂, hpos₂, hsup₂⟩ | hesc
+              · have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+                refine Or.inl ⟨i, b₂, ?_, hsup₂⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+              · exact Or.inr (TraceSource.leteT hesc)
+            · obtain ⟨i, b₂, hpos₂, hsup₂⟩ := cprop ht (Or.inl hc')
+              have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+              rcases hsup₂ with hc'' | hk''
+              · refine Or.inl ⟨i, b₂, ?_, Or.inr (Or.inl hc'')⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+              · refine Or.inl ⟨i, b₂, ?_, Or.inr (Or.inr hk'')⟩
+                rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+            · obtain ⟨i, b₂, hpos₂, hsup₂⟩ := kprop ht (Or.inl hk')
+              have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+              refine Or.inl ⟨i, b₂, ?_, Or.inr (Or.inr hsup₂)⟩
+              rw [← hs, List.get?_append_lt hlt]
+              exact hpos₂
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            refine Or.inl ⟨Γ₁.length + m, b', ?_, hsup⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ₁.length m),
+              Nat.add_sub_cancel_left]
+            exact hpos
+      · exact Or.inr (TraceSource.leteB hesc)
+  | _, _, _, Typed.unit, hK => False.elim hK
+  | _, _, _, @Typed.next _ _ _ h, hK => by
+      rcases tpropF h hK with hs | hesc
+      · exact Or.inl hs
+      · exact Or.inr (TraceSource.next hesc)
+  | _, _, _, @Typed.fix Γ a body hΓ h, hn => Or.inr (TraceSource.fixHere hΓ h hn)
+  | _, _, _, @Typed.cons _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.nil, _ => Or.inr TraceSource.mintNil
+  | _, _, _, @Typed.snoc _ Γ Δ t u ht hu hs, _ => by
+      rcases tpropF ht True.intro with hs' | hesc
+      · match hs' with
+        | ⟨j, b', hpos, hsup⟩ =>
+            refine Or.inl ⟨j, b', ?_, hsup⟩
+            have hlt : j < Γ.length := List.get?_some_lt hpos
+            rw [← hs, List.get?_append_lt hlt]
+            exact hpos
+      · exact Or.inr (TraceSource.snocT hesc)
+  | _, _, _, Typed.gen, hK => (hK.2 (Or.inr (Or.inr True.intro))).elim
+  | _, _, _, Typed.red, ⟨hb, _⟩ => False.elim hb
+  | _, _, _, Typed.obj, ⟨hb, _⟩ => False.elim hb
+  | _, _, _, Typed.terminate, _ => Or.inr TraceSource.mintTerminate
+  | _, _, _, @Typed.contr Γ k t τ hk h, hK => by
+      rcases tpropF h hK with hs | hesc
+      · match hs with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            exact Or.inl ⟨m + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (TraceSource.contr hesc)
+  | _, _, _, @Typed.weak Γ k t τ hk h, hK => by
+      rcases tpropF h hK with hs | hesc
+      · match hs with
+        | ⟨i, b', hpos, hsup⟩ =>
+            exact Or.inl ⟨i + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (TraceSource.weak hesc)
+
+
+
+/-! ## The T3 falsifier: the context-only form is false -/
+
+/-- `DeepConsume` of the killer-binder type (via its content DOMAIN). -/
+theorem deepConsume_killerBinder : DeepConsume (.arrow ACU .unit) := by
+  show (ACU = Ty.content ∨ NeedsC ACU ∨ DeepConsume ACU) ∨ DeepConsume Ty.unit
+  refine Or.inl (Or.inr (Or.inr ?_))
+  show (Ty.content = Ty.content ∨ NeedsC Ty.content ∨ DeepConsume Ty.content) ∨
+    DeepConsume Ty.unit
+  exact Or.inl (Or.inl rfl)
+
+/-- T3 (kernel): the CONTEXT-ONLY DeepConsume supply lemma is FALSE —
+`killerBinderTyped` deep-consumes at `[content]`, whose only position
+supplies neither `DeepConsume` nor a knower. The consumer is the λ's
+domain annotation; the escape must return the BINDER. -/
+theorem deepConsume_context_only_refuted :
+    ¬ (∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ), DeepConsume τ →
+        ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ (DeepConsume b ∨ NeedsK b)) := by
+  intro hall
+  obtain ⟨i, b, hpos, hsup⟩ := hall killerBinderTyped deepConsume_killerBinder
+  cases i with
+  | zero =>
+      have hb : b = Ty.content := by
+        have h := hpos
+        rw [List.get?_zero_cons'] at h
+        injection h with he
+        exact he.symm
+      subst hb
+      rcases hsup with h | h <;> exact h
+  | succ n => simp at hpos
+
+/-! ## The escape: a binder carrying the demand-side disjunct -/
+
+/-- The demand-side disjunct a binder can carry: the token itself, a
+content-need, a deep consumer, or a knower-need. -/
+def DemandTy (a : Ty) : Prop := a = Ty.content ∨ NeedsC a ∨ DeepConsume a ∨ NeedsK a
+
+/-- The domain clause of `DeepConsume` injects into `DemandTy`. -/
+theorem demandTy_of_domain {a : Ty}
+    (h : a = Ty.content ∨ NeedsC a ∨ DeepConsume a) : DemandTy a := by
+  rcases h with h | h | h
+  · exact Or.inl h
+  · exact Or.inr (Or.inl h)
+  · exact Or.inr (Or.inr (Or.inl h))
+
+/-- A BINDER inside the derivation — a λ-domain or a lete-component —
+whose type carries `DemandTy`: the annotation that introduces the
+consumer. The lifts name the premise slot, so a caller can invert the
+certificate and descend into the binder's body. -/
+inductive BinderDemand : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop
+  | lam {Γ : List Ty} {a b : Ty} {body : Term} (h : Typed (a :: Γ) body b)
+      (hd : DemandTy a) : BinderDemand (Typed.lam h)
+  | leteY {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      (ht : Typed Γ₁ t (.tensor a b)) (hb : Typed (b :: a :: Γ₂) body c)
+      (hs : Γ₁ ++ Γ₂ = E) (hd : DemandTy b) : BinderDemand (Typed.lete ht hb hs)
+  | leteX {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      (ht : Typed Γ₁ t (.tensor a b)) (hb : Typed (b :: a :: Γ₂) body c)
+      (hs : Γ₁ ++ Γ₂ = E) (hd : DemandTy a) : BinderDemand (Typed.lete ht hb hs)
+  | lamIn {Γ : List Ty} {a b : Ty} {body : Term} {h : Typed (a :: Γ) body b} :
+      BinderDemand h → BinderDemand (Typed.lam h)
+  | appL {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      BinderDemand hf → BinderDemand (Typed.app hf ha hs)
+  | appR {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      BinderDemand ha → BinderDemand (Typed.app hf ha hs)
+  | leteB {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c}
+      {hs : Γ₁ ++ Γ₂ = E} :
+      BinderDemand hb → BinderDemand (Typed.lete ht hb hs)
+  | fixBody {Γ : List Ty} {a : Ty} {body : Term} {hΓ : AllNonLinear Γ}
+      {h : Typed Γ body (.arrow (.later a) a)} :
+      BinderDemand h → BinderDemand (Typed.fix hΓ h)
+  | contr {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed (k :: k :: Γ) (Term.mergeAt 0 t) τ} :
+      BinderDemand h → BinderDemand (Typed.contr hk h)
+  | weak {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed Γ t τ} :
+      BinderDemand h → BinderDemand (Typed.weak hk h)
+
+/-- THE DEEPCONSUME SUPPLY LEMMA: a deep-consuming conclusion either
+spends a deep-consuming-or-knower context position, or the derivation
+CONTAINS a binder whose type carries the demand. Pure structural
+recursion on the derivation — no fuel, no counters. -/
+theorem deepConsume_supply : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    DeepConsume τ →
+    (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ (DeepConsume b ∨ NeedsK b)) ∨ BinderDemand h
+  | _, _, _, Typed.var, hK => Or.inl ⟨0, _, List.get?_zero_cons', Or.inl hK⟩
+  -- λ: the DOMAIN disjunct escapes at the binder itself; the codomain
+  -- branch recurses, and its position-0 sub-case (the body spends the
+  -- binder) escapes through `DemandTy` — the NeedsK slot is load-bearing
+  -- there (DeepConsume a is already the domain clause).
+  | _, _, _, @Typed.lam Γ a b _ h, hK => by
+      rcases hK with hd | hc
+      · exact Or.inr (BinderDemand.lam h (demandTy_of_domain hd))
+      · rcases deepConsume_supply h hc with hgot | hesc
+        · match hgot with
+          | ⟨0, b', hpos, hsup⟩ =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with he
+              subst he
+              rcases hsup with hd | hk
+              · exact Or.inr (BinderDemand.lam h (Or.inr (Or.inr (Or.inl hd))))
+              · exact Or.inr (BinderDemand.lam h (Or.inr (Or.inr (Or.inr hk))))
+          | ⟨n + 1, b', hpos, hsup⟩ =>
+              rw [List.get?_succ_cons'] at hpos
+              exact Or.inl ⟨n, b', hpos, hsup⟩
+        · exact Or.inr (BinderDemand.lamIn hesc)
+  -- app: the codomain disjunct makes the FN's type deep-consuming — the
+  -- fn-IH fires with NO amendment (the brief's expectation, confirmed).
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hK => by
+      rcases deepConsume_supply hf (Or.inr hK) with hgot | hesc
+      · match hgot with
+        | ⟨i, b', hpos, hsup⟩ =>
+            refine Or.inl ⟨i, b', ?_, hsup⟩
+            have hlt : i < Γ.length := List.get?_some_lt hpos
+            rw [← hs, List.get?_append_lt hlt]
+            exact hpos
+      · exact Or.inr (BinderDemand.appL hesc)
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hK => False.elim hK
+  -- lete: the comps are BINDERS — a comp-position supply escapes through
+  -- `leteY`/`leteX` (both `DeepConsume` and `NeedsK` comps occur).
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hK => by
+      rcases deepConsume_supply hb hK with hgot | hesc
+      · match hgot with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hd | hk
+            · exact Or.inr (BinderDemand.leteY ht hb hs (Or.inr (Or.inr (Or.inl hd))))
+            · exact Or.inr (BinderDemand.leteY ht hb hs (Or.inr (Or.inr (Or.inr hk))))
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hd | hk
+            · exact Or.inr (BinderDemand.leteX ht hb hs (Or.inr (Or.inr (Or.inl hd))))
+            · exact Or.inr (BinderDemand.leteX ht hb hs (Or.inr (Or.inr (Or.inr hk))))
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            refine Or.inl ⟨Γ₁.length + m, b', ?_, hsup⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ₁.length m),
+              Nat.add_sub_cancel_left]
+            exact hpos
+      · exact Or.inr (BinderDemand.leteB hesc)
+  | _, _, _, Typed.unit, hK => False.elim hK
+  | _, _, _, @Typed.next _ _ _ _, hK => False.elim hK
+  -- fix: the body's type is `arrow (▷a) a`, whose deep-consumption is
+  -- exactly `DeepConsume a` (the domain `▷a` contributes nothing) — the
+  -- body-IH fires with no amendment; the binder-free fix is no escape.
+  | _, _, _, @Typed.fix Γ a body hΓ h, hK => by
+      rcases deepConsume_supply h (Or.inr hK) with hgot | hesc
+      · exact Or.inl hgot
+      · exact Or.inr (BinderDemand.fixBody hesc)
+  | _, _, _, @Typed.cons _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.nil, hK => False.elim hK
+  | _, _, _, @Typed.snoc _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.gen, hK => by simp [DeepConsume, NeedsC] at hK
+  | _, _, _, Typed.red, hK => by simp [DeepConsume, NeedsC] at hK
+  | _, _, _, Typed.obj, hK => by simp [DeepConsume, NeedsC] at hK
+  | _, _, _, Typed.terminate, hK => by simp [DeepConsume, NeedsC] at hK
+  | _, _, _, @Typed.contr Γ k t τ hk h, hK => by
+      rcases deepConsume_supply h hK with hgot | hesc
+      · match hgot with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            exact Or.inl ⟨m + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (BinderDemand.contr hesc)
+  | _, _, _, @Typed.weak Γ k t τ hk h, hK => by
+      rcases deepConsume_supply h hK with hgot | hesc
+      · match hgot with
+        | ⟨i, b', hpos, hsup⟩ =>
+            exact Or.inl ⟨i + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (BinderDemand.weak hesc)
+
+
+/-! ## The predicate -/
+
+/-- A type CONTAINS a token-derived thing: content, a trace, or anything
+reachable through `later` / `tensor` / `arrow`. `later` is TRANSPARENT
+(the reviewer's `K = arrow (later (arrow unit content)) unit` witness:
+`next` delays a value without changing what it carries); `arrow` is
+transparent on BOTH sides (`K`'s domain is an arrow whose codomain is
+content). Inert types — unit, knower, knowledge, value — are not live.
+`stream` is deliberately OUT (see `not_containsLive_stream` and the
+starvation argument in the report). -/
+def ContainsLive : Ty → Prop
+  | .content => True
+  | .trace => True
+  | .later a => ContainsLive a
+  | .tensor a b => ContainsLive a ∨ ContainsLive b
+  | .arrow a b => ContainsLive a ∨ ContainsLive b
+  | _ => False
+
+theorem containsLive_content : ContainsLive Ty.content := trivial
+theorem containsLive_trace : ContainsLive Ty.trace := trivial
+theorem containsLive_later {a : Ty} : ContainsLive (Ty.later a) ↔ ContainsLive a := Iff.rfl
+theorem containsLive_tensor {a b : Ty} :
+    ContainsLive (Ty.tensor a b) ↔ (ContainsLive a ∨ ContainsLive b) := Iff.rfl
+theorem containsLive_arrow {a b : Ty} :
+    ContainsLive (Ty.arrow a b) ↔ (ContainsLive a ∨ ContainsLive b) := Iff.rfl
+theorem not_containsLive_unit : ¬ ContainsLive Ty.unit := by simp [ContainsLive]
+theorem not_containsLive_knower : ¬ ContainsLive Ty.knower := by simp [ContainsLive]
+theorem not_containsLive_knowledge : ¬ ContainsLive Ty.knowledge := by simp [ContainsLive]
+theorem not_containsLive_value : ¬ ContainsLive Ty.value := by simp [ContainsLive]
+theorem not_containsLive_stream : ¬ ContainsLive Ty.stream := by simp [ContainsLive]
+
+/-- An arrow with a token-receiving domain is banned at a frame. -/
+def LiveDomOK (τ : Ty) : Prop := ¬ ∃ (d c : Ty), τ = Ty.arrow d c ∧ ContainsLive d
+
+
+theorem liveDomOK_later {a : Ty} : LiveDomOK (Ty.later a) := by
+  intro h
+  obtain ⟨d, c, he, _⟩ := h
+  exact Ty.noConfusion he
+
+theorem liveDomOK_content : LiveDomOK Ty.content := by
+  intro h
+  obtain ⟨d, c, he, _⟩ := h
+  exact Ty.noConfusion he
+
+theorem liveDomOK_unit : LiveDomOK Ty.unit := by
+  intro h
+  obtain ⟨d, c, he, _⟩ := h
+  exact Ty.noConfusion he
+
+
+/-! ## The escape: conjurers + binder carriers -/
+
+/-- The escape disjunct for `containsLive_prop`: where the liveness is
+CONJURED. `mintNil`/`mintTerminate`/`genHere` are the constants whose types
+carry content/trace from nothing; `fixHere` is a fixpoint whose payload is
+live; `lamB`/`leteY`/`leteX` are the BINDERS whose type is live or
+knower-needing (the annotation-as-killer shape, `killerBinderTyped`). -/
+inductive LiveEscape : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop
+  | mintNil : LiveEscape Typed.nil
+  | mintTerminate : LiveEscape Typed.terminate
+  | genHere : LiveEscape Typed.gen
+  | fixHere {Γ : List Ty} {a : Ty} {body : Term} (hΓ : AllNonLinear Γ)
+      (h : Typed Γ body (.arrow (.later a) a)) (hl : ContainsLive a) :
+      LiveEscape (Typed.fix hΓ h)
+  | lamB {Γ : List Ty} {a b : Ty} {body : Term} (h : Typed (a :: Γ) body b)
+      (hl : ContainsLive a ∨ NeedsK a) : LiveEscape (Typed.lam h)
+  | leteY {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      (ht : Typed Γ₁ t (.tensor a b)) (hb : Typed (b :: a :: Γ₂) body c)
+      (hs : Γ₁ ++ Γ₂ = E) (hl : ContainsLive b ∨ NeedsK b) :
+      LiveEscape (Typed.lete ht hb hs)
+  | leteX {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      (ht : Typed Γ₁ t (.tensor a b)) (hb : Typed (b :: a :: Γ₂) body c)
+      (hs : Γ₁ ++ Γ₂ = E) (hl : ContainsLive a ∨ NeedsK a) :
+      LiveEscape (Typed.lete ht hb hs)
+  | lam {Γ : List Ty} {a b : Ty} {body : Term} {h : Typed (a :: Γ) body b} :
+      LiveEscape h → LiveEscape (Typed.lam h)
+  | next {Γ : List Ty} {a : Ty} {t : Term} {h : Typed Γ t a} :
+      LiveEscape h → LiveEscape (Typed.next h)
+  | appL {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      LiveEscape hf → LiveEscape (Typed.app hf ha hs)
+  | appR {E Γ Δ : List Ty} {a b : Ty} {fn arg : Term}
+      {hf : Typed Γ fn (.arrow a b)} {ha : Typed Δ arg a} {hs : Γ ++ Δ = E} :
+      LiveEscape ha → LiveEscape (Typed.app hf ha hs)
+  | pairL {E Γ Δ : List Ty} {a b : Ty} {l r : Term}
+      {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E} :
+      LiveEscape hl → LiveEscape (Typed.pair hl hr hs)
+  | pairR {E Γ Δ : List Ty} {a b : Ty} {l r : Term}
+      {hl : Typed Γ l a} {hr : Typed Δ r b} {hs : Γ ++ Δ = E} :
+      LiveEscape hr → LiveEscape (Typed.pair hl hr hs)
+  | leteT {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c}
+      {hs : Γ₁ ++ Γ₂ = E} :
+      LiveEscape ht → LiveEscape (Typed.lete ht hb hs)
+  | leteB {E Γ₁ Γ₂ : List Ty} {a b c : Ty} {t body : Term}
+      {ht : Typed Γ₁ t (.tensor a b)} {hb : Typed (b :: a :: Γ₂) body c}
+      {hs : Γ₁ ++ Γ₂ = E} :
+      LiveEscape hb → LiveEscape (Typed.lete ht hb hs)
+  | consT {E Γ Δ : List Ty} {hd tl : Term}
+      {hc : Typed Γ hd .content} {ht : Typed Δ tl (.later .stream)}
+      {hs : Γ ++ Δ = E} :
+      LiveEscape ht → LiveEscape (Typed.cons hc ht hs)
+  | snocT {E Γ Δ : List Ty} {t u : Term}
+      {ht : Typed Γ t .trace} {hu : Typed Δ u .content} {hs : Γ ++ Δ = E} :
+      LiveEscape ht → LiveEscape (Typed.snoc ht hu hs)
+  | contr {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed (k :: k :: Γ) (Term.mergeAt 0 t) τ} :
+      LiveEscape h → LiveEscape (Typed.contr hk h)
+  | weak {Γ : List Ty} {k : Ty} {t : Term} {τ : Ty} {hk : k.isLinear = false}
+      {h : Typed Γ t τ} :
+      LiveEscape h → LiveEscape (Typed.weak hk h)
+
+/-! ## The falsifiers (T3) — run BEFORE the statement is trusted -/
+
+/-- T3: the CONTEXT-ONLY form is false — `nil` mints a trace from nothing. -/
+theorem containsLive_contextOnly_refuted :
+    ¬ (∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ), ContainsLive τ →
+        ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ (ContainsLive b ∨ NeedsK b)) := by
+  intro hall
+  obtain ⟨i, b, hpos, _⟩ := hall Typed.nil containsLive_trace
+  simp at hpos
+
+/-- The conjurer-only escape (mints + `gen` + `fix`, NO binder carriers) as
+a bare Prop, enough to state the refuted form. -/
+def ConjurerOnly : {Γ : List Ty} → {t : Term} → {τ : Ty} → Typed Γ t τ → Prop
+  | _, _, _, Typed.nil => True
+  | _, _, _, Typed.terminate => True
+  | _, _, _, Typed.gen => True
+  | _, _, _, @Typed.fix _ _ _ _ _ => True
+  | _, _, _, @Typed.lam _ _ _ _ h => ConjurerOnly h
+  | _, _, _, @Typed.next _ _ _ h => ConjurerOnly h
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha _ => ConjurerOnly hf ∨ ConjurerOnly ha
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr _ => ConjurerOnly hl ∨ ConjurerOnly hr
+  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb _ => ConjurerOnly ht ∨ ConjurerOnly hb
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht _ => ConjurerOnly hc ∨ ConjurerOnly ht
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu _ => ConjurerOnly ht ∨ ConjurerOnly hu
+  | _, _, _, @Typed.contr _ _ _ _ _ h => ConjurerOnly h
+  | _, _, _, @Typed.weak _ _ _ _ _ h => ConjurerOnly h
+  | _, _, _, _ => False
+
+/-- T3 (kernel): the CONJURER-ONLY escape is STILL false — the identity
+killer `λ(c). var 0 : [] ⊢ arrow content content` has live type, no context
+position, and no mint/gen/fix inside. The binder carriers are load-bearing. -/
+theorem containsLive_conjurerOnly_refuted :
+    ¬ (∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ), ContainsLive τ →
+        (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ (ContainsLive b ∨ NeedsK b))
+          ∨ ConjurerOnly h) := by
+  intro hall
+  have h := hall (Typed.lam (a := Ty.content) Typed.var) (Or.inl trivial)
+  rcases h with ⟨i, b, hpos, _⟩ | hesc
+  · simp at hpos
+  · exact hesc
+
+/-! ## The propagation lemma -/
+
+/-- LIVENESS PROPAGATION: a type containing a token-derived thing is
+supplied by a context position that is itself live or knower-needing, or
+the derivation carries a conjurer (mint / `gen` / live-payload fix) or a
+live BINDER. The `cprop` walk, with `ContainsLive`'s both-sides arrow
+clause and the `LiveEscape` disjunct. -/
+theorem containsLive_prop : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    ContainsLive τ →
+    (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ (ContainsLive b ∨ NeedsK b))
+      ∨ LiveEscape h
+  | _, _, _, Typed.var, hK => Or.inl ⟨0, _, List.get?_zero_cons', Or.inl hK⟩
+  | _, _, _, @Typed.lam Γ a b _ h, hK => by
+      rcases hK with hla | hlb
+      · exact Or.inr (LiveEscape.lamB h (Or.inl hla))
+      · rcases containsLive_prop h hlb with hs | hesc
+        · match hs with
+          | ⟨0, b', hpos, hsup⟩ =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with he
+              subst he
+              rcases hsup with hl | hk
+              · exact Or.inr (LiveEscape.lamB h (Or.inl hl))
+              · exact Or.inr (LiveEscape.lamB h (Or.inr hk))
+          | ⟨n + 1, b', hpos, hsup⟩ =>
+              rw [List.get?_succ_cons'] at hpos
+              exact Or.inl ⟨n, b', hpos, hsup⟩
+        · exact Or.inr (LiveEscape.lam hesc)
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hK => by
+      rcases containsLive_prop hf (Or.inr hK) with hs' | hesc
+      · match hs' with
+        | ⟨i, b', hpos, hsup⟩ =>
+            refine Or.inl ⟨i, b', ?_, hsup⟩
+            have hlt : i < Γ.length := List.get?_some_lt hpos
+            rw [← hs, List.get?_append_lt hlt]
+            exact hpos
+      · exact Or.inr (LiveEscape.appL hesc)
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hK => by
+      rcases hK with hK | hK
+      · rcases containsLive_prop hl hK with hs' | hesc
+        · match hs' with
+          | ⟨i, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨i, b', ?_, hsup⟩
+              have hlt : i < Γ.length := List.get?_some_lt hpos
+              rw [← hs, List.get?_append_lt hlt]
+              exact hpos
+        · exact Or.inr (LiveEscape.pairL hesc)
+      · rcases containsLive_prop hr hK with hs' | hesc
+        · match hs' with
+          | ⟨j, b', hpos, hsup⟩ =>
+              refine Or.inl ⟨Γ.length + j, b', ?_, hsup⟩
+              rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+                Nat.add_sub_cancel_left]
+              exact hpos
+        · exact Or.inr (LiveEscape.pairR hesc)
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hK => by
+      rcases containsLive_prop hb hK with hs' | hesc
+      · match hs' with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hl | hk
+            · exact Or.inr (LiveEscape.leteY ht hb hs (Or.inl hl))
+            · exact Or.inr (LiveEscape.leteY ht hb hs (Or.inr hk))
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hl | hk
+            · exact Or.inr (LiveEscape.leteX ht hb hs (Or.inl hl))
+            · exact Or.inr (LiveEscape.leteX ht hb hs (Or.inr hk))
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            refine Or.inl ⟨Γ₁.length + m, b', ?_, hsup⟩
+            rw [← hs, List.get?_append_ge (Nat.le_add_right Γ₁.length m),
+              Nat.add_sub_cancel_left]
+            exact hpos
+      · exact Or.inr (LiveEscape.leteB hesc)
+  | _, _, _, Typed.unit, hK => False.elim hK
+  | _, _, _, @Typed.next _ _ _ h, hK => by
+      rcases containsLive_prop h hK with hs | hesc
+      · exact Or.inl hs
+      · exact Or.inr (LiveEscape.next hesc)
+  | _, _, _, @Typed.fix Γ a body hΓ h, hK =>
+      Or.inr (LiveEscape.fixHere hΓ h hK)
+  | _, _, _, @Typed.cons _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.nil, _ => Or.inr LiveEscape.mintNil
+  | _, _, _, @Typed.snoc _ Γ Δ t u ht hu hs, _ => by
+      rcases containsLive_prop ht containsLive_trace with hs' | hesc
+      · match hs' with
+        | ⟨j, b', hpos, hsup⟩ =>
+            refine Or.inl ⟨j, b', ?_, hsup⟩
+            have hlt : j < Γ.length := List.get?_some_lt hpos
+            rw [← hs, List.get?_append_lt hlt]
+            exact hpos
+      · exact Or.inr (LiveEscape.snocT hesc)
+  | _, _, _, Typed.gen, _ => Or.inr LiveEscape.genHere
+  | _, _, _, Typed.red, hK => by simp [ContainsLive] at hK
+  | _, _, _, Typed.obj, hK => by simp [ContainsLive] at hK
+  | _, _, _, Typed.terminate, _ => Or.inr LiveEscape.mintTerminate
+  | _, _, _, @Typed.contr Γ k t τ hk h, hK => by
+      rcases containsLive_prop h hK with hs | hesc
+      · match hs with
+        | ⟨0, b', hpos, hsup⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨1, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            exact Or.inl ⟨0, _, List.get?_zero_cons', hsup⟩
+        | ⟨m + 2, b', hpos, hsup⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            exact Or.inl ⟨m + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (LiveEscape.contr hesc)
+  | _, _, _, @Typed.weak Γ k t τ hk h, hK => by
+      rcases containsLive_prop h hK with hs | hesc
+      · match hs with
+        | ⟨i, b', hpos, hsup⟩ =>
+            exact Or.inl ⟨i + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup⟩
+      · exact Or.inr (LiveEscape.weak hesc)
+
+
+
+/-! ## The supply lemmas, strengthened with `uses` (the DRoute consumer-location layer) -/
+
+
+/-! ## The knower supply, with `uses` -/
+
+theorem kprop_uses : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    NeedsK τ → ∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ NeedsK b ∧ uses h i ≥ 1
+  | _, _, _, @Typed.var a, hK => ⟨0, _, List.get?_zero_cons', hK, by simp [uses]⟩
+  | _, _, _, @Typed.lam Γ a b _ h, ⟨hb, hna⟩ => by
+      have hk := kprop_uses h hb
+      match hk with
+      | ⟨0, b', hpos, hneed, _⟩ =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          exact (hna hneed).elim
+      | ⟨n + 1, b', hpos, hneed, huses⟩ =>
+          rw [List.get?_succ_cons'] at hpos
+          exact ⟨n, b', hpos, hneed, huses⟩
+  | _, _, _, @Typed.app E Γ Δ a b fn arg hf ha hs, hK => by
+      by_cases hx : NeedsK a
+      · obtain ⟨j, b', hpos, hneed, huses⟩ := kprop_uses ha hx
+        refine ⟨Γ.length + j, b', ?_, hneed, ?_⟩
+        · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+            Nat.add_sub_cancel_left]
+          exact hpos
+        · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+          exact huses
+      · obtain ⟨i, b', hpos, hneed, huses⟩ := kprop_uses hf ⟨hK, hx⟩
+        have hlt : i < Γ.length := List.get?_some_lt hpos
+        refine ⟨i, b', ?_, hneed, ?_⟩
+        · rw [← hs, List.get?_append_lt hlt]
+          exact hpos
+        · simp only [uses]; rw [if_pos hlt]
+          exact huses
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hK => by
+      rcases hK with hK | hK
+      · obtain ⟨i, b', hpos, hneed, huses⟩ := kprop_uses hl hK
+        have hlt : i < Γ.length := List.get?_some_lt hpos
+        refine ⟨i, b', ?_, hneed, ?_⟩
+        · rw [← hs, List.get?_append_lt hlt]
+          exact hpos
+        · simp only [uses]; rw [if_pos hlt]
+          exact huses
+      · obtain ⟨j, b', hpos, hneed, huses⟩ := kprop_uses hr hK
+        refine ⟨Γ.length + j, b', ?_, hneed, ?_⟩
+        · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+            Nat.add_sub_cancel_left]
+          exact hpos
+        · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+          exact huses
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hK => by
+      have hk := kprop_uses hb hK
+      match hk with
+      | ⟨0, b', hpos, hneed, _⟩ =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          obtain ⟨i, b₂, hpos₂, hneed₂, huses₂⟩ := kprop_uses ht (Or.inr hneed)
+          have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+          refine ⟨i, b₂, ?_, hneed₂, ?_⟩
+          · rw [← hs, List.get?_append_lt hlt]
+            exact hpos₂
+          · simp only [uses]; rw [if_pos hlt]
+            exact huses₂
+      | ⟨1, b', hpos, hneed, _⟩ =>
+          rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          obtain ⟨i, b₂, hpos₂, hneed₂, huses₂⟩ := kprop_uses ht (Or.inl hneed)
+          have hlt : i < Γ₁.length := List.get?_some_lt hpos₂
+          refine ⟨i, b₂, ?_, hneed₂, ?_⟩
+          · rw [← hs, List.get?_append_lt hlt]
+            exact hpos₂
+          · simp only [uses]; rw [if_pos hlt]
+            exact huses₂
+      | ⟨m + 2, b', hpos, hneed, huses⟩ =>
+          rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+          refine ⟨Γ₁.length + m, b', ?_, hneed, ?_⟩
+          · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ₁.length m),
+              Nat.add_sub_cancel_left]
+            exact hpos
+          · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+            exact huses
+  | _, _, _, Typed.unit, hK => False.elim hK
+  | _, _, _, @Typed.next _ _ _ _, hK => False.elim hK
+  | _, _, _, @Typed.fix _ _ _ _ h, hK => kprop_uses h ⟨hK, fun hf => hf⟩
+  | _, _, _, @Typed.cons _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.nil, hK => False.elim hK
+  | _, _, _, @Typed.snoc _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.gen, ⟨hb, hna⟩ => (hna True.intro).elim
+  | _, _, _, Typed.red, ⟨hb, _⟩ => False.elim hb
+  | _, _, _, Typed.obj, ⟨hb, _⟩ => False.elim hb
+  | _, _, _, Typed.terminate, ⟨hb, _⟩ => False.elim hb
+  | _, _, _, @Typed.contr Γ k t τ hk h, hK => by
+      have hk' := kprop_uses h hK
+      match hk' with
+      | ⟨0, b', hpos, hneed, huses⟩ =>
+          rw [List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          refine ⟨0, _, List.get?_zero_cons', hneed, ?_⟩
+          exact Nat.le_trans huses (Nat.le_add_right _ _)
+      | ⟨1, b', hpos, hneed, huses⟩ =>
+          rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+          injection hpos with he
+          subst he
+          refine ⟨0, _, List.get?_zero_cons', hneed, ?_⟩
+          exact Nat.le_trans huses (Nat.le_add_left _ _)
+      | ⟨m + 2, b', hpos, hneed, huses⟩ =>
+          rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+          refine ⟨m + 1, b', by rw [List.get?_succ_cons']; exact hpos, hneed, ?_⟩
+          simp only [uses]; rw [if_neg (by omega)]
+          exact huses
+  | _, _, _, @Typed.weak Γ k t τ hk h, hK => by
+      obtain ⟨i, b', hpos, hneed, huses⟩ := kprop_uses h hK
+      refine ⟨i + 1, b', by rw [List.get?_succ_cons']; exact hpos, hneed, ?_⟩
+      simp only [uses]; rw [if_neg (by omega)]
+      exact huses
+
+/-! ## The live supply, with `uses` -/
+
+theorem containsLive_prop_uses : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    ContainsLive τ →
+    (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ (ContainsLive b ∨ NeedsK b) ∧ uses h i ≥ 1)
+      ∨ LiveEscape h
+  | _, _, _, @Typed.var a, hK => Or.inl ⟨0, _, List.get?_zero_cons', Or.inl hK, by simp [uses]⟩
+  | _, _, _, @Typed.lam Γ a b _ h, hK => by
+      rcases hK with hla | hlb
+      · exact Or.inr (LiveEscape.lamB h (Or.inl hla))
+      · rcases containsLive_prop_uses h hlb with hs | hesc
+        · match hs with
+          | ⟨0, b', hpos, hsup, _⟩ =>
+              rw [List.get?_zero_cons'] at hpos
+              injection hpos with he
+              subst he
+              rcases hsup with hl | hk
+              · exact Or.inr (LiveEscape.lamB h (Or.inl hl))
+              · exact Or.inr (LiveEscape.lamB h (Or.inr hk))
+          | ⟨n + 1, b', hpos, hsup, huses⟩ =>
+              rw [List.get?_succ_cons'] at hpos
+              exact Or.inl ⟨n, b', hpos, hsup, huses⟩
+        · exact Or.inr (LiveEscape.lam hesc)
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hK => by
+      rcases containsLive_prop_uses hf (Or.inr hK) with hs' | hesc
+      · obtain ⟨i, b', hpos, hsup, huses⟩ := hs'
+        have hlt : i < Γ.length := List.get?_some_lt hpos
+        refine Or.inl ⟨i, b', ?_, hsup, ?_⟩
+        · rw [← hs, List.get?_append_lt hlt]
+          exact hpos
+        · simp only [uses]; rw [if_pos hlt]
+          exact huses
+      · exact Or.inr (LiveEscape.appL hesc)
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hK => by
+      rcases hK with hK | hK
+      · rcases containsLive_prop_uses hl hK with hs' | hesc
+        · obtain ⟨i, b', hpos, hsup, huses⟩ := hs'
+          have hlt : i < Γ.length := List.get?_some_lt hpos
+          refine Or.inl ⟨i, b', ?_, hsup, ?_⟩
+          · rw [← hs, List.get?_append_lt hlt]
+            exact hpos
+          · simp only [uses]; rw [if_pos hlt]
+            exact huses
+        · exact Or.inr (LiveEscape.pairL hesc)
+      · rcases containsLive_prop_uses hr hK with hs' | hesc
+        · obtain ⟨j, b', hpos, hsup, huses⟩ := hs'
+          refine Or.inl ⟨Γ.length + j, b', ?_, hsup, ?_⟩
+          · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+          · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+            exact huses
+        · exact Or.inr (LiveEscape.pairR hesc)
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hK => by
+      rcases containsLive_prop_uses hb hK with hs' | hesc
+      · match hs' with
+        | ⟨0, b', hpos, hsup, _⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hl | hk
+            · exact Or.inr (LiveEscape.leteY ht hb hs (Or.inl hl))
+            · exact Or.inr (LiveEscape.leteY ht hb hs (Or.inr hk))
+        | ⟨1, b', hpos, hsup, _⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hl | hk
+            · exact Or.inr (LiveEscape.leteX ht hb hs (Or.inl hl))
+            · exact Or.inr (LiveEscape.leteX ht hb hs (Or.inr hk))
+        | ⟨m + 2, b', hpos, hsup, huses⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            refine Or.inl ⟨Γ₁.length + m, b', ?_, hsup, ?_⟩
+            · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ₁.length m),
+                Nat.add_sub_cancel_left]
+              exact hpos
+            · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+              exact huses
+      · exact Or.inr (LiveEscape.leteB hesc)
+  | _, _, _, Typed.unit, hK => False.elim hK
+  | _, _, _, @Typed.next _ _ _ h, hK => by
+      rcases containsLive_prop_uses h hK with hs | hesc
+      · exact Or.inl hs
+      · exact Or.inr (LiveEscape.next hesc)
+  | _, _, _, @Typed.fix Γ a body hΓ h, hK => Or.inr (LiveEscape.fixHere hΓ h hK)
+  | _, _, _, @Typed.cons _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.nil, _ => Or.inr LiveEscape.mintNil
+  | _, _, _, @Typed.snoc _ Γ Δ t u ht hu hs, _ => by
+      rcases containsLive_prop_uses ht containsLive_trace with hs' | hesc
+      · match hs' with
+        | ⟨j, b', hpos, hsup, huses⟩ =>
+            have hlt : j < Γ.length := List.get?_some_lt hpos
+            refine Or.inl ⟨j, b', ?_, hsup, ?_⟩
+            · rw [← hs, List.get?_append_lt hlt]
+              exact hpos
+            · simp only [uses]; rw [if_pos hlt]
+              exact huses
+      · exact Or.inr (LiveEscape.snocT hesc)
+  | _, _, _, Typed.gen, _ => Or.inr LiveEscape.genHere
+  | _, _, _, Typed.red, hK => by simp [ContainsLive] at hK
+  | _, _, _, Typed.obj, hK => by simp [ContainsLive] at hK
+  | _, _, _, Typed.terminate, _ => Or.inr LiveEscape.mintTerminate
+  | _, _, _, @Typed.contr Γ k t τ hk h, hK => by
+      rcases containsLive_prop_uses h hK with hs | hesc
+      · match hs with
+        | ⟨0, b', hpos, hsup, huses⟩ =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            refine Or.inl ⟨0, _, List.get?_zero_cons', hsup, ?_⟩
+            exact Nat.le_trans huses (Nat.le_add_right _ _)
+        | ⟨1, b', hpos, hsup, huses⟩ =>
+            rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            refine Or.inl ⟨0, _, List.get?_zero_cons', hsup, ?_⟩
+            exact Nat.le_trans huses (Nat.le_add_left _ _)
+        | ⟨m + 2, b', hpos, hsup, huses⟩ =>
+            rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+            refine Or.inl ⟨m + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup, ?_⟩
+            simp only [uses]; rw [if_neg (by omega)]
+            exact huses
+      · exact Or.inr (LiveEscape.contr hesc)
+  | _, _, _, @Typed.weak Γ k t τ hk h, hK => by
+      rcases containsLive_prop_uses h hK with hs | hesc
+      · match hs with
+        | ⟨i, b', hpos, hsup, huses⟩ =>
+            refine Or.inl ⟨i + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup, ?_⟩
+            simp only [uses]; rw [if_neg (by omega)]
+            exact huses
+      · exact Or.inr (LiveEscape.weak hesc)
+
+/-! ## The stream supply, with `uses` -/
+
+theorem spropF_uses : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (h : Typed Γ t τ),
+    NeedsS τ →
+    (∃ (i : Nat) (b : Ty), Γ[i]? = some b ∧ SSupply b ∧ uses h i ≥ 1) ∨ FixNeedS h
+  | _, _, _, @Typed.var a, hK => Or.inl ⟨0, _, List.get?_zero_cons', Or.inl hK, by simp [uses]⟩
+  | _, _, _, @Typed.lam Γ a b _ h, ⟨hb, hna, hnk⟩ => by
+      rcases spropF_uses h hb with hs | hesc
+      · obtain ⟨i, b', hpos, hsup, huses⟩ := hs
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hs' | hk'
+            · exact (hna hs').elim
+            · exact (hnk hk').elim
+        | succ n =>
+            rw [List.get?_succ_cons'] at hpos
+            exact Or.inl ⟨n, b', hpos, hsup, huses⟩
+      · exact Or.inr (FixNeedS.lam hesc)
+  | _, _, _, @Typed.app E Γ Δ X b fn arg hf ha hs, hK => by
+      by_cases hx : NeedsS X
+      · rcases spropF_uses ha hx with hs' | hesc
+        · obtain ⟨j, b', hpos, hsup, huses⟩ := hs'
+          refine Or.inl ⟨Γ.length + j, b', ?_, hsup, ?_⟩
+          · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+          · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+            exact huses
+        · exact Or.inr (FixNeedS.appR hesc)
+      · by_cases hk : NeedsK X
+        · obtain ⟨j, b', hpos, hsup, huses⟩ := kprop_uses ha hk
+          refine Or.inl ⟨Γ.length + j, b', ?_, Or.inr hsup, ?_⟩
+          · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+          · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+            exact huses
+        · rcases spropF_uses hf ⟨hK, hx, hk⟩ with hs'' | hesc
+          · obtain ⟨i, b', hpos, hsup, huses⟩ := hs''
+            have hlt : i < Γ.length := List.get?_some_lt hpos
+            refine Or.inl ⟨i, b', ?_, hsup, ?_⟩
+            · rw [← hs, List.get?_append_lt hlt]
+              exact hpos
+            · simp only [uses]; rw [if_pos hlt]
+              exact huses
+          · exact Or.inr (FixNeedS.appL hesc)
+  | _, _, _, @Typed.pair E Γ Δ a b l r hl hr hs, hK => by
+      rcases hK with hK | hK
+      · rcases spropF_uses hl hK with hs' | hesc
+        · obtain ⟨i, b', hpos, hsup, huses⟩ := hs'
+          have hlt : i < Γ.length := List.get?_some_lt hpos
+          refine Or.inl ⟨i, b', ?_, hsup, ?_⟩
+          · rw [← hs, List.get?_append_lt hlt]
+            exact hpos
+          · simp only [uses]; rw [if_pos hlt]
+            exact huses
+        · exact Or.inr (FixNeedS.pairL hesc)
+      · rcases spropF_uses hr hK with hs' | hesc
+        · obtain ⟨j, b', hpos, hsup, huses⟩ := hs'
+          refine Or.inl ⟨Γ.length + j, b', ?_, hsup, ?_⟩
+          · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+              Nat.add_sub_cancel_left]
+            exact hpos
+          · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+            exact huses
+        · exact Or.inr (FixNeedS.pairR hesc)
+  | _, _, _, @Typed.lete E Γ₁ Γ₂ a b c t body ht hb hs, hK => by
+      rcases spropF_uses hb hK with hs' | hesc
+      · obtain ⟨i, b', hpos, hsup, huses⟩ := hs'
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            rcases hsup with hs'' | hk'
+            · rcases spropF_uses ht (Or.inr hs'') with hs2 | hesc2
+              · obtain ⟨i2, b₂, hpos₂, hsup₂, huses₂⟩ := hs2
+                have hlt : i2 < Γ₁.length := List.get?_some_lt hpos₂
+                refine Or.inl ⟨i2, b₂, ?_, hsup₂, ?_⟩
+                · rw [← hs, List.get?_append_lt hlt]
+                  exact hpos₂
+                · simp only [uses]; rw [if_pos hlt]
+                  exact huses₂
+              · exact Or.inr (FixNeedS.leteT hesc2)
+            · obtain ⟨i2, b₂, hpos₂, hsup₂, huses₂⟩ := kprop_uses ht (Or.inr hk')
+              have hlt : i2 < Γ₁.length := List.get?_some_lt hpos₂
+              refine Or.inl ⟨i2, b₂, ?_, Or.inr hsup₂, ?_⟩
+              · rw [← hs, List.get?_append_lt hlt]
+                exact hpos₂
+              · simp only [uses]; rw [if_pos hlt]
+                exact huses₂
+        | succ i1 =>
+            cases i1 with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                rcases hsup with hs'' | hk'
+                · rcases spropF_uses ht (Or.inl hs'') with hs2 | hesc2
+                  · obtain ⟨i2, b₂, hpos₂, hsup₂, huses₂⟩ := hs2
+                    have hlt : i2 < Γ₁.length := List.get?_some_lt hpos₂
+                    refine Or.inl ⟨i2, b₂, ?_, hsup₂, ?_⟩
+                    · rw [← hs, List.get?_append_lt hlt]
+                      exact hpos₂
+                    · simp only [uses]; rw [if_pos hlt]
+                      exact huses₂
+                  · exact Or.inr (FixNeedS.leteT hesc2)
+                · obtain ⟨i2, b₂, hpos₂, hsup₂, huses₂⟩ := kprop_uses ht (Or.inl hk')
+                  have hlt : i2 < Γ₁.length := List.get?_some_lt hpos₂
+                  refine Or.inl ⟨i2, b₂, ?_, Or.inr hsup₂, ?_⟩
+                  · rw [← hs, List.get?_append_lt hlt]
+                    exact hpos₂
+                  · simp only [uses]; rw [if_pos hlt]
+                    exact huses₂
+            | succ m =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                refine Or.inl ⟨Γ₁.length + m, b', ?_, hsup, ?_⟩
+                · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ₁.length m),
+                    Nat.add_sub_cancel_left]
+                  exact hpos
+                · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+                  exact huses
+      · exact Or.inr (FixNeedS.leteB hesc)
+  | _, _, _, Typed.unit, hK => False.elim hK
+  | _, _, _, @Typed.next _ _ _ h, hK => by
+      rcases spropF_uses h hK with hs | hesc
+      · exact Or.inl hs
+      · exact Or.inr (FixNeedS.next hesc)
+  | _, _, _, @Typed.fix Γ a body hΓ h, hn => Or.inr (FixNeedS.here hΓ h hn)
+  | _, _, _, @Typed.cons _ Γ Δ hd tl hc' ht hs, _ => by
+      rcases spropF_uses ht True.intro with hs' | hesc
+      · obtain ⟨j, b', hpos, hsup, huses⟩ := hs'
+        refine Or.inl ⟨Γ.length + j, b', ?_, hsup, ?_⟩
+        · rw [← hs, List.get?_append_ge (Nat.le_add_right Γ.length j),
+            Nat.add_sub_cancel_left]
+          exact hpos
+        · simp only [uses]; rw [if_neg (by omega), Nat.add_sub_cancel_left]
+          exact huses
+      · exact Or.inr (FixNeedS.consT hesc)
+  | _, _, _, Typed.nil, hK => False.elim hK
+  | _, _, _, @Typed.snoc _ _ _ _ _ _ _ _, hK => False.elim hK
+  | _, _, _, Typed.gen, hK => (hK.2.2 True.intro).elim
+  | _, _, _, Typed.red, ⟨hb, _, _⟩ => False.elim hb
+  | _, _, _, Typed.obj, ⟨hb, _, _⟩ => False.elim hb
+  | _, _, _, Typed.terminate, ⟨hb, _, _⟩ => False.elim hb
+  | _, _, _, @Typed.contr Γ k t τ hk h, hK => by
+      rcases spropF_uses h hK with hs | hesc
+      · obtain ⟨i, b', hpos, hsup, huses⟩ := hs
+        cases i with
+        | zero =>
+            rw [List.get?_zero_cons'] at hpos
+            injection hpos with he
+            subst he
+            refine Or.inl ⟨0, _, List.get?_zero_cons', hsup, ?_⟩
+            exact Nat.le_trans huses (Nat.le_add_right _ _)
+        | succ i1 =>
+            cases i1 with
+            | zero =>
+                rw [List.get?_succ_cons', List.get?_zero_cons'] at hpos
+                injection hpos with he
+                subst he
+                refine Or.inl ⟨0, _, List.get?_zero_cons', hsup, ?_⟩
+                exact Nat.le_trans huses (Nat.le_add_left _ _)
+            | succ m =>
+                rw [List.get?_succ_cons', List.get?_succ_cons'] at hpos
+                refine Or.inl ⟨m + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup, ?_⟩
+                simp only [uses]; rw [if_neg (by omega)]
+                exact huses
+      · exact Or.inr (FixNeedS.contr hesc)
+  | _, _, _, @Typed.weak Γ k t τ hk h, hK => by
+      rcases spropF_uses h hK with hs | hesc
+      · obtain ⟨i, b', hpos, hsup, huses⟩ := hs
+        refine Or.inl ⟨i + 1, b', by rw [List.get?_succ_cons']; exact hpos, hsup, ?_⟩
+        simp only [uses]; rw [if_neg (by omega)]
+        exact huses
+      · exact Or.inr (FixNeedS.weak hesc)
+
+
+
+/-! ## The D-route dispatch (the converged (D)-machinery; the march rebuild consumes it) -/
+
+
+/-! ## The class inclusions (why one live class suffices) -/
+
+theorem needsC_containsLive : ∀ a : Ty, NeedsC a → ContainsLive a := by
+  intro a
+  induction a with
+  | content => intro _; exact containsLive_content
+  | trace | knower | knowledge | value | stream | unit => intro h; exact False.elim h
+  | later a' _ => intro h; exact False.elim h
+  | tensor a' b' iha ihb =>
+      intro h
+      rcases h with h | h
+      · exact Or.inl (iha h)
+      · exact Or.inr (ihb h)
+  | arrow a' b' iha ihb => intro h; exact Or.inr (ihb h.1)
+
+theorem needsT_containsLive : ∀ a : Ty, NeedsT a → ContainsLive a := by
+  intro a
+  induction a with
+  | content | knower | knowledge | value | stream | unit => intro h; exact False.elim h
+  | trace => intro _; exact containsLive_trace
+  | later a' ih => intro h; exact ih h
+  | tensor a' b' iha ihb =>
+      intro h
+      rcases h with h | h
+      · exact Or.inl (iha h)
+      · exact Or.inr (ihb h)
+  | arrow a' b' iha ihb => intro h; exact Or.inr (ihb h.1)
+
+theorem deepConsume_containsLive : ∀ a : Ty, DeepConsume a → ContainsLive a := by
+  intro a
+  induction a with
+  | content | trace | knower | knowledge | value | stream | unit => intro h; exact False.elim h
+  | later a' _ => intro h; exact False.elim h
+  | tensor a' b' _ _ => intro h; exact False.elim h
+  | arrow a' b' iha ihb =>
+      intro h
+      rcases h with h | h
+      · rcases h with h | h | h
+        · exact Or.inl (by rw [h]; exact containsLive_content)
+        · exact Or.inl (needsC_containsLive a' h)
+        · exact Or.inl (iha h)
+      · exact Or.inr (ihb h)
+
+/-- `dInert` is a genuine no-demand condition: `¬ContainsLive` already
+excludes the content-, trace- and deep-consumer demands. -/
+theorem inert_no_demand {X : Ty} (h : ¬ ContainsLive X) :
+    ¬ NeedsC X ∧ ¬ NeedsT X ∧ ¬ DeepConsume X :=
+  ⟨fun hc => h (needsC_containsLive X hc),
+   fun ht => h (needsT_containsLive X ht),
+   fun hd => h (deepConsume_containsLive X hd)⟩
+
+/-! ## The demand class and the route -/
+
+def Demand (b : Ty) : Prop := ContainsLive b ∨ NeedsK b ∨ NeedsS b
+
+inductive DRoute (Δ : List Ty) (u' : Term) (X : Ty) : Typed Δ u' X → Prop
+  | dSupply {hu : Typed Δ u' X} (i : Nat) (b : Ty)
+      (hpos : Δ[i]? = some b) (hsup : Demand b) (huses : uses hu i ≥ 1) :
+      DRoute Δ u' X hu
+  | dEscape {hu : Typed Δ u' X} (e : LiveEscape hu ∨ FixNeedS hu) : DRoute Δ u' X hu
+  | dInert {hu : Typed Δ u' X}
+      (h : ¬ ContainsLive X ∧ ¬ NeedsK X ∧ ¬ NeedsS X) : DRoute Δ u' X hu
+
+/-! ## The dispatch -/
+
+/-- Every value lands in one of the three routes — the classification is
+UNCONDITIONAL (w13's finding: `MarchCtx'` was vestigial here); the caller
+consumes the discipline against `dSupply`. -/
+theorem dRoute : ∀ {Δ : List Ty} {u' : Term} {X : Ty} (hu : Typed Δ u' X),
+    DRoute Δ u' X hu := by
+  intro Δ u' X hu
+  by_cases hL : ContainsLive X
+  · rcases containsLive_prop_uses hu hL with ⟨i, b, hpos, hsup, hu1⟩ | hesc
+    · rcases hsup with hl | hk
+      · exact DRoute.dSupply i b hpos (Or.inl hl) hu1
+      · exact DRoute.dSupply i b hpos (Or.inr (Or.inl hk)) hu1
+    · exact DRoute.dEscape (Or.inl hesc)
+  · by_cases hK : NeedsK X
+    · obtain ⟨i, b, hpos, hw, hu2⟩ := kprop_uses hu hK
+      exact DRoute.dSupply i b hpos (Or.inr (Or.inl hw)) hu2
+    · by_cases hS : NeedsS X
+      · rcases spropF_uses hu hS with ⟨i, b, hpos, hsup, hu3⟩ | hesc
+        · rcases hsup with hs | hk
+          · exact DRoute.dSupply i b hpos (Or.inr (Or.inr hs)) hu3
+          · exact DRoute.dSupply i b hpos (Or.inr (Or.inl hk)) hu3
+        · exact DRoute.dEscape (Or.inr hesc)
+      · exact DRoute.dInert ⟨hL, hK, hS⟩
+
+/-! ## T3 probes -/
+
+/-- T3 (kernel): the `NeedsS` arm is LOAD-BEARING — `stream` is stream-needing,
+not live and not knower-needing, so a two-arm dispatch would classify a
+stream-typed value as inert. (`ContainsLive stream = False` is deliberate:
+stream is owned by the weight, not by the liveness predicate.) -/
+theorem stream_arm_needed :
+    NeedsS Ty.stream ∧ ¬ ContainsLive Ty.stream ∧ ¬ NeedsK Ty.stream :=
+  ⟨trivial, not_containsLive_stream, fun h => h⟩
+
+/-- T3 (kernel): the `ContainsLive` arm subsumes the content/trace/deep
+demands, so no fourth class is needed. -/
+theorem live_subsumes : ∀ a : Ty, (NeedsC a → ContainsLive a)
+    ∧ (NeedsT a → ContainsLive a) ∧ (DeepConsume a → ContainsLive a) :=
+  fun a => ⟨needsC_containsLive a, needsT_containsLive a, deepConsume_containsLive a⟩
+
+/-! ## The `¬ContainsLive σ` threading helpers (the composed-install supply)
+
+`¬ContainsLive σ` threads every (B′) recursion arm (the round-2 repair,
+w13 p15 + w14 round 1): the lam killer-of-killer recursion preserves it
+through the codomain, the fix arm through the `▷`-payload, and the
+domain half is the `LiveDomOK` side of the same decomposition. -/
+
+/-- The codomain of a non-live arrow is non-live: the killer-of-killer
+recursion (`σ = arrow X′ σ′`) preserves `¬ContainsLive σ`. -/
+theorem not_containsLive_arrow_cod {a b : Ty}
+    (h : ¬ ContainsLive (Ty.arrow a b)) : ¬ ContainsLive b := by
+  intro hb
+  exact h (containsLive_arrow.mpr (Or.inr hb))
+
+/-- The domain half of the same decomposition (the `LiveDomOK` side). -/
+theorem not_containsLive_arrow_dom {a b : Ty}
+    (h : ¬ ContainsLive (Ty.arrow a b)) : ¬ ContainsLive a := by
+  intro ha
+  exact h (containsLive_arrow.mpr (Or.inl ha))
+
+/-- The fix arm's `▷`-payload thread: `arrow (later a) a` is live exactly
+when `a` is (`later` is transparent), so `¬ContainsLive σ` survives the
+fix-arm recursion at `σ = a`. -/
+theorem not_containsLive_fix {a : Ty} (h : ¬ ContainsLive a) :
+    ¬ ContainsLive (Ty.arrow (Ty.later a) a) := by
+  intro hc
+  rcases containsLive_arrow.mp hc with h1 | h2
+  · exact h (containsLive_later.mp h1)
+  · exact h h2
+
+
 end Dcare

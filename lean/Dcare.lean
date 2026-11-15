@@ -11,6 +11,9 @@ import Dcare.Path
 import Dcare.Subst
 import Dcare.Cut
 import Dcare.Chase
+import Dcare.SC
+import Dcare.Adversarial.Extractor
+import Dcare.Kernel.Guarded
 import Dcare.Syntax
 import Dcare.Typing
 import Dcare.Linearity
