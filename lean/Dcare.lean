@@ -12,7 +12,7 @@ import Dcare.Subst
 import Dcare.Cut
 import Dcare.Chase
 import Dcare.SC
-import Dcare.Adversarial.Extractor
+import Dcare.Adversarial.Unrestricted
 import Dcare.Kernel.Guarded
 import Dcare.Syntax
 import Dcare.Typing

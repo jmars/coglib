@@ -23,14 +23,14 @@ THE ARMEDSETUP, as specified:
 
 - NO WEAK (the discard ban): a derivation cannot drop a resource. This
   alone carries both laws (the theorems below), and it alone excludes the
-  Extractor — whose LAST step is a `weak` (`extractor_not_noweak`).
+  counterexample — whose LAST step is a `weak` (`counterexample_not_noweak`).
 - NO FAKE KNOWERS (`NoKnowerSynthesis`): no `lam`/`lete` binder may
   demand knower supply — the compiler rejects `λ(k : knower). …` pockets,
   which is the shape the lete/pair swap feeds. At the no-weak grain this
   ban is NOT needed for the two laws (a stronger statement than the
   specification asked for); it is carried because it excludes the
-  Extractor's conduit by a SECOND, independent route
-  (`extractor_no_synthesis`).
+  counterexample's conduit by a SECOND, independent route
+  (`counterexample_conduit_no_synthesis`).
 - THE GUARD (▷): already in the rule set — `fix` fires only at
   all-non-linear contexts (`AllNonLinear`), which `content`'s linearity
   enforces (`no_fix_at_content`: no fix at any content-bearing frame).
@@ -149,19 +149,19 @@ theorem no_contraction_armed {t : Term}
     (hA : ArmedSetup h) : False :=
   no_contraction_restricted h hA.1
 
-/-- The knower-synthesis ban EXCLUDES the Extractor's conduit: the
+/-- The knower-synthesis ban EXCLUDES the counterexample's conduit: the
 witness binds a knower (`λ(k : knower). …`), and `knower` demands knower
 supply. -/
-theorem extractor_conduit_no_synthesis :
+theorem counterexample_conduit_no_synthesis :
     ¬ NoKnowerSynthesis arrowKnowerKnowledge := by
   intro hB
   unfold NoKnowerSynthesis at hB
   exact hB Ty.knower (List.mem_cons.mpr (Or.inl rfl)) True.intro
 
-/-- THE KERNEL FORBIDS THE EXTRACTOR, twice over: the witness carries a
+/-- THE KERNEL FORBIDS THE COUNTEREXAMPLE, twice over: the witness carries a
 `weak` node (its LAST step — the discard), so it is not a `NoWeak`
 derivation. -/
-theorem extractor_not_noweak :
+theorem counterexample_not_noweak :
     ¬ NoWeakFrag.NoWeak (carrierAKK arrowKnowerKnowledge) := by
   intro hN
   have h := hN
@@ -169,9 +169,9 @@ theorem extractor_not_noweak :
   exact h.1
 
 /-- … and the full ArmedSetup rejects it by both routes at once. -/
-theorem extractor_not_armed :
+theorem counterexample_not_armed :
     ¬ ArmedSetup (carrierAKK arrowKnowerKnowledge) :=
-  fun hA => extractor_not_noweak hA.1
+  fun hA => counterexample_not_noweak hA.1
 
 /-! ## The guard, inherited -/
 

@@ -1,6 +1,6 @@
 import Dcare.Chase
 import Dcare.SC
-import Dcare.Adversarial.Extractor
+import Dcare.Adversarial.Unrestricted
 import Dcare.Kernel.Guarded
 import Dcare.T1
 import Dcare.T3
@@ -40,6 +40,10 @@ Rules:
 #print axioms Dcare.always_continue_infinite
 #print axioms Dcare.run_not_infinite_is_finite
 #print axioms Dcare.no_contraction_content
+#print axioms Dcare.uMono
+#print axioms Dcare.uSound
+#print axioms Dcare.contraction_needs_two
+#print axioms Dcare.no_closed_cloner
 #print axioms Dcare.no_weakening_content
 #print axioms Dcare.knower_contractible
 #print axioms Dcare.adversary_spin_diverges
@@ -50,7 +54,6 @@ Rules:
 #print axioms Dcare.no_closed_knower
 #print axioms Dcare.sound
 #print axioms Dcare.single_linear_use
-#print axioms Dcare.no_vanishing
 #print axioms Dcare.archival_witness
 #print axioms Dcare.past_cannot_teach
 #print axioms Dcare.past_cannot_value
@@ -528,20 +531,20 @@ Rules:
 #print axioms Dcare.SCProvenance3.no_knowerAtContent
 #print axioms Dcare.SCProvenance3.unit_at_content_of_knowerAtContent
 #print axioms Dcare.SCProvenance3.unit_at_content_of_knowledgeAtContent
-#print axioms Dcare.Adversarial.Extractor.extractor_exists
-#print axioms Dcare.Adversarial.Extractor.no_vanishing_unrestricted_refuted
-#print axioms Dcare.Adversarial.Extractor.the_conduit
-#print axioms Dcare.Adversarial.Extractor.conduit_inert
-#print axioms Dcare.Adversarial.Extractor.extractor_not_cut_free
-#print axioms Dcare.Adversarial.Extractor.knowledge_rung_unreachable
+#print axioms Dcare.Adversarial.Unrestricted.unrestricted_counterexample
+#print axioms Dcare.Adversarial.Unrestricted.no_vanishing_unrestricted_refuted
+#print axioms Dcare.Adversarial.Unrestricted.the_conduit
+#print axioms Dcare.Adversarial.Unrestricted.conduit_inert
+#print axioms Dcare.Adversarial.Unrestricted.counterexample_not_cut_free
+#print axioms Dcare.Adversarial.Unrestricted.knowledge_rung_unreachable
 #print axioms Dcare.Kernel.Guarded.weakHeads_nil_of_noweak
 #print axioms Dcare.Kernel.Guarded.no_vanishing_restricted
 #print axioms Dcare.Kernel.Guarded.no_contraction_restricted
 #print axioms Dcare.Kernel.Guarded.no_vanishing_armed
 #print axioms Dcare.Kernel.Guarded.no_contraction_armed
-#print axioms Dcare.Kernel.Guarded.extractor_conduit_no_synthesis
-#print axioms Dcare.Kernel.Guarded.extractor_not_noweak
-#print axioms Dcare.Kernel.Guarded.extractor_not_armed
+#print axioms Dcare.Kernel.Guarded.counterexample_conduit_no_synthesis
+#print axioms Dcare.Kernel.Guarded.counterexample_not_noweak
+#print axioms Dcare.Kernel.Guarded.counterexample_not_armed
 #print axioms Dcare.Kernel.Guarded.archive_noweak
 #print axioms Dcare.SCContraction.contraction_at_knower
 #print axioms Dcare.SCContraction.contractionConduit

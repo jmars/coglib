@@ -1,7 +1,7 @@
 import Dcare.SC
 
 /-!
-# The Extractor — the unrestricted calculus's structural counterexample
+# The Unrestricted calculus — the structural counterexample
 
 THE ADVERSARIAL BASELINE. This file isolates, names, and scopes the
 counterexample that ended the unrestricted no-vanishing program
@@ -38,11 +38,11 @@ cut-free — its discharging application is λ-headed.
 MEANING: in a calculus without a resource guard, an agent can receive
 content and return nothing — by spending the content into a self-sustaining
 epistemic cycle and discarding the reading. The unrestricted calculus
-permits this; the restricted kernel (the Guarded kernel, `Dcare.Kernel.Guarded`) forbids it by
+permits this; the Guarded kernel (the Guarded kernel, `Dcare.Kernel.Guarded`) forbids it by
 banning the discard (`weak`), which the witness needs at its last step.
 -/
 
-namespace Dcare.Adversarial.Extractor
+namespace Dcare.Adversarial.Unrestricted
 
 open SCExtractor SCProvenance SCProvenance3
 
@@ -50,14 +50,14 @@ open SCExtractor SCProvenance SCProvenance3
 UNRESTRICTED calculus. This one line is the refutation of
 `Dcare.Linearity.no_vanishing` (the statement as written is FALSE);
 it is kept in-tree as the adversarial baseline result. -/
-theorem extractor_exists : ∃ (t : Term), Nonempty (Typed [Ty.content] t Ty.unit) :=
+theorem unrestricted_counterexample : ∃ (t : Term), Nonempty (Typed [Ty.content] t Ty.unit) :=
   ⟨_, ⟨carrierAKK arrowKnowerKnowledge⟩⟩
 
 /-- THE UNRESTRICTED LAW IS REFUTED, as a one-line statement. -/
 theorem no_vanishing_unrestricted_refuted :
     ¬ (∀ (t : Term), Typed [Ty.content] t Ty.unit → False) := by
   intro H
-  obtain ⟨t, ⟨h⟩⟩ := extractor_exists
+  obtain ⟨t, ⟨h⟩⟩ := unrestricted_counterexample
   exact H t h
 
 /-! ## The four pieces, named -/
@@ -105,7 +105,7 @@ theorem the_discard :
       Ty.unit) :=
   ⟨carrierAKK arrowKnowerKnowledge⟩
 
-/-! ## The scope — what the Extractor is NOT -/
+/-! ## The scope — what the counterexample is NOT -/
 
 /-- No knower is synthesized: `[content] ⊢ knower` is dead, and the
 conduit cannot fire at any content frame (the knower argument would be
@@ -121,7 +121,7 @@ theorem conduit_inert {X : Ty} {fn arg : Term} {Γ Δ : List Ty}
 
 /-- The witness is NOT cut-free: its discharging application is
 λ-headed. Every cut-free fragment theorem in the tree survives. -/
-theorem extractor_not_cut_free :
+theorem counterexample_not_cut_free :
     ¬ IsAtomic
       (Term.lam (Ty.arrow Ty.knower Ty.knowledge) (Term.liftAt 0 Term.unit)) :=
   carrierAKK_fn_not_atomic
@@ -139,4 +139,4 @@ reads the content position exactly once, as the cycle's stream head. -/
 theorem the_token_is_spent :
     Nonempty (Typed [Ty.content] (Term.var 0) Ty.content) := ⟨Typed.var⟩
 
-end Dcare.Adversarial.Extractor
+end Dcare.Adversarial.Unrestricted

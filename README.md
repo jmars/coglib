@@ -12,18 +12,18 @@ resource-linear destructors, mechanized in Lean 4 (4.35.0, no Mathlib) as **two
 formal systems**: the *unrestricted* calculus (the adversarial baseline) and the
 *Guarded* kernel.
 
-In the kernel both linearity laws are absolute theorems of the grammar — a
-derivation of contraction would *be* a cloner, and a derivation of vanishing would
-*be* an eraser. Unrestricted, the guard is gone and they are not free: **vanishing
-is refuted**, by a machine-checked counterexample (`extractor_exists`) — an
-explicit `[content] ⊢ unit` derivation whose lete/pair exchange spends the token —
-while contraction remains the open named conjecture (`no_contraction_content`).
-The counterexample is the point of shipping both systems: the boundary between
-them is measured, not asserted.
+In the kernel both linearity laws are absolute theorems of the grammar — a derivation of
+contraction would *be* a cloner, and a derivation of vanishing would *be* an eraser. Unrestricted,
+the guard is gone and they are not free: **vanishing is refuted**, by a machine-checked
+counterexample (`unrestricted_counterexample`) — an explicit `[content] ⊢ unit` derivation whose
+lete/pair exchange spends the token — while contraction is **proved** (`no_contraction_content`,
+by the monotone counting model). Both of the unrestricted laws are settled, in opposite
+directions, and the development carries **no `sorryAx` anywhere**. The counterexample is the point
+of shipping both systems: the boundary between them is measured, not asserted.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/calculus-dark.svg">
-  <img src="diagrams/calculus-light.svg" width="100%" alt="The Care Calculus at a glance: knower K is the one duplicable resource; gen produces content together with a knower; cons needs a guarded stream; red yields knowledge and obj yields the objective's value; terminate exits to an inert trace that nothing consumes. In the Guarded kernel, copying content or erasing it is untypable; unrestricted, erasing it is typable — the Extractor counterexample — and only copying stays untypable.">
+  <img src="diagrams/calculus-light.svg" width="100%" alt="The Care Calculus at a glance: knower K is the one duplicable resource; gen produces content together with a knower; cons needs a guarded stream; red yields knowledge and obj yields the objective's value; terminate exits to an inert trace that nothing consumes. In the Guarded kernel, copying content or erasing it is untypable; unrestricted, erasing it is typable — the unrestricted counterexample — and only copying stays untypable.">
 </picture>
 
 The two claims are about where a reduction chain ends. If it reaches the minds
@@ -44,8 +44,8 @@ removes.
 | `paper/paper.md` | the paper (markdown — the source of truth) |
 | `diagrams/` | the two figures above as SVG, each a light/dark pair selected with `<picture>` |
 | `paper.pdf` | the paper rendered to PDF, generated from `paper/paper.md`: `pandoc paper/paper.md --pdf-engine=typst -o paper.pdf` |
-| `lean/` | the Lean 4 development — the library `Dcare`, the two formal systems (`Dcare/Adversarial/` the Extractor baseline, `Dcare/Kernel/` the Guarded kernel), the sequent-calculus presentation (`Dcare/SC.lean`), and `Audit.lean` (the axiom audit, run by the gate and not part of the library) |
-| `scripts/lean-check.sh` | the gate: build, axiom audit (no `T2_postulate`, no `sorryAx` outside the named conjectures), no public file importing the restricted companion |
+| `lean/` | the Lean 4 development — the library `Dcare`, the two formal systems (`Dcare/Adversarial/` the unrestricted baseline, `Dcare/Kernel/` the Guarded kernel), the sequent-calculus presentation (`Dcare/SC.lean`), and `Audit.lean` (the axiom audit, run by the gate and not part of the library) |
+| `scripts/lean-check.sh` | the gate: build, axiom audit (no `T2_postulate`, **zero** `sorryAx`), no public file importing the restricted companion |
 | `scripts/sync-check.sh` | the paper gate: every backtick-quoted identifier in the paper matches a real declaration in `lean/Dcare/` |
 
 ## Building and checking
@@ -66,11 +66,10 @@ the development does not declare fails the gate rather than passing quietly. Tha
 is how a dangling anchor in this paper was caught and landed as a declaration
 (`no_vanishing_noweak`, SC.lean, axioms `[propext, Quot.sound]`).
 
-The audit is per-theorem: every public theorem's axiom list is printed, and
-only the standard three (`propext`, `Classical.choice`, `Quot.sound`) are
-permitted, plus `sorryAx` for the statements on the named allowlist. The
-check that "the paper does not depend on the collaboration" is the absence of
-`T2_postulate` from every printed axiom list.
+The audit is per-theorem: every public theorem's axiom list is printed, and only the standard
+three (`propext`, `Classical.choice`, `Quot.sound`) are permitted, and **no `sorryAx` is present
+at all** — 962 theorems, both unrestricted laws settled. The check that "the paper does not depend
+on the collaboration" is the absence of `T2_postulate` from every printed axiom list.
 
 ## Scope
 
