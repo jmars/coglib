@@ -22,8 +22,10 @@ import Dcare.Cut
 
 Rules:
 - public theorems may depend only on the standard three axioms
-  (propext, Classical.choice, Quot.sound) — sorryAx only for the three
-  statements on the scheduled allowlist;
+  (propext, Classical.choice, Quot.sound) — and ZERO sorryAx anywhere:
+  the allowlist is empty (both classical statements are decided —
+  no_contraction_content proved, no_vanishing refuted — so any sorryAx
+  in a public theorem fails the gate outright);
 - `T2_postulate` must NEVER appear in a public theorem's axiom list:
   "the paper does not depend on the collaboration landing" as a check.
 -/

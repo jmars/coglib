@@ -22,6 +22,11 @@ directions, and the development carries **no `sorryAx` anywhere**. The counterex
 of shipping both systems: the boundary between them is measured, not asserted.
 
 <picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/systems-dark.svg">
+  <img src="diagrams/systems-light.svg" width="100%" alt="Two calculi side by side. Left, UNRESTRICTED (the adversarial baseline): content is spent as the head of an epistemic cycle (cons + fix), a lete/pair swap reorders the context, red reads the stream, and a lambda binding a knower discards the reading and returns unit — the counterexample, a valid derivation, not an exploit. Right, GUARDED (the ArmedSetup): no discard (weak is banned), no fake knowers, the guard inherited rather than added; the archive is legal, content yields trace, recorded rather than discarded; both laws are absolute theorems in the kernel. The strip below states the boundary as the machines report it: unrestricted_counterexample means admitted, counterexample_not_armed means forbidden twice. Not a proof of safety — a proof of why safety requires a structural guard.">
+</picture>
+
+<picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/calculus-dark.svg">
   <img src="diagrams/calculus-light.svg" width="100%" alt="The Care Calculus at a glance: knower K is the one duplicable resource; gen produces content together with a knower; cons needs a guarded stream; red yields knowledge and obj yields the objective's value; terminate exits to an inert trace that nothing consumes. In the Guarded kernel, copying content or erasing it is untypable; unrestricted, erasing it is typable — the unrestricted counterexample — and only copying stays untypable.">
 </picture>
@@ -42,7 +47,7 @@ removes.
 | path | contents |
 |---|---|
 | `paper/paper.md` | the paper (markdown — the source of truth) |
-| `diagrams/` | the two figures above as SVG, each a light/dark pair selected with `<picture>` |
+| `diagrams/` | the three figures as SVG, each a light/dark pair selected with `<picture>`: the calculus at a glance, the two systems side by side, and the two reduction chains |
 | `paper.pdf` | the paper rendered to PDF, generated from `paper/paper.md`: `pandoc paper/paper.md --pdf-engine=typst -o paper.pdf` |
 | `lean/` | the Lean 4 development — the library `Dcare`, the two formal systems (`Dcare/Adversarial/` the unrestricted baseline, `Dcare/Kernel/` the Guarded kernel), the sequent-calculus presentation (`Dcare/SC.lean`), and `Audit.lean` (the axiom audit, run by the gate and not part of the library) |
 | `reproducer/minimal-reproducer.lean` | **the minimal reproducer** — one file, ~430 lines, no imports, no Mathlib, no build: ILL's natural-deduction shape plus the two deltas that matter (ordered splits; sort-keyed linearity with no modality), the counterexample to vanishing, the monotone counting model that proves contraction, and the check that the same model accepts the counterexample. Both laws decided in one file; the gate compiles it |

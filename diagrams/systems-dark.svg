@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="486" viewBox="0 0 880 486" role="img">
+<defs><marker id="h" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 1 L 9 5 L 0 9 z" fill="#6e7681"/></marker></defs>
+<rect width="880" height="486" fill="#0d1117"/>
+<text x="30" y="40" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="16" font-weight="600" fill="#e6edf3">Two calculi, one measured boundary</text>
+<text x="30" y="62" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">The same judgment, twice: without a resource guard, and with it. The difference is machine-checked, not argued.</text>
+<text x="30" y="100" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#ff7b72">UNRESTRICTED</text>
+<text x="128" y="100" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">the adversarial baseline</text>
+<rect x="30" y="112" width="380" height="196" rx="8" fill="#161b22" stroke="#30363d"/>
+<rect x="46" y="128" width="348" height="30" rx="8" fill="#161b22" stroke="#30363d" stroke-dasharray="4 3"/>
+<text x="58" y="148" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#e6edf3">content</text>
+<text x="180" y="148" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#9198a1">[content] ⊢ stream</text>
+<rect x="46" y="164" width="348" height="30" rx="8" fill="#161b22" stroke="#30363d" stroke-dasharray="4 3"/>
+<text x="58" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#e6edf3">cons + fix</text>
+<text x="180" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#9198a1">the_cycle</text>
+<rect x="46" y="200" width="348" height="30" rx="8" fill="#161b22" stroke="#30363d" stroke-dasharray="4 3"/>
+<text x="58" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#e6edf3">lete / pair</text>
+<text x="180" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#9198a1">the_swap</text>
+<rect x="46" y="236" width="348" height="30" rx="8" fill="#161b22" stroke="#30363d" stroke-dasharray="4 3"/>
+<text x="58" y="256" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#e6edf3">red</text>
+<text x="180" y="256" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#9198a1">reads the pocket</text>
+<rect x="46" y="272" width="348" height="30" rx="8" fill="#161b22" stroke="#ff7b72"/>
+<text x="58" y="292" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#ff7b72">λ(k : knower). unit</text>
+<text x="230" y="292" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="600" fill="#ff7b72">the DISCARD (weak)</text>
+<text x="30" y="326" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">A valid derivation, not an exploit.</text>
+<text x="30" y="344" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">Input consumed, empty signal returned.</text>
+<text x="30" y="364" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" font-weight="600" fill="#ff7b72">unrestricted_counterexample ⇒ a derivable tree</text>
+<text x="450" y="100" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#6cb0ff">GUARDED</text>
+<text x="524" y="100" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">the safe kernel (ArmedSetup)</text>
+<rect x="450" y="112" width="400" height="196" rx="8" fill="#161b22" stroke="#30363d"/>
+<rect x="466" y="128" width="368" height="30" rx="8" fill="#161b22" stroke="#30363d" stroke-dasharray="4 3"/>
+<text x="478" y="148" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#6cb0ff">no discard</text>
+<text x="646" y="148" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1">weak banned</text>
+<rect x="466" y="170" width="368" height="30" rx="8" fill="#161b22" stroke="#30363d" stroke-dasharray="4 3"/>
+<text x="478" y="190" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#6cb0ff">no fake knowers</text>
+<text x="646" y="190" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1">no binder demands a knower</text>
+<rect x="466" y="212" width="368" height="30" rx="8" fill="#161b22" stroke="#30363d" stroke-dasharray="4 3"/>
+<text x="478" y="232" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#6cb0ff">the guard ▷, inherited</text>
+<text x="646" y="232" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#9198a1">inherited, not added</text>
+<rect x="466" y="254" width="368" height="30" rx="8" fill="#161b22" stroke="#6cb0ff"/>
+<text x="478" y="274" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="13" font-weight="600" fill="#6cb0ff">[content] ⊢ trace</text>
+<text x="646" y="274" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#6cb0ff">recorded, not discarded</text>
+<text x="450" y="326" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#9198a1">Both laws absolute theorems, fixpoints included.</text>
+<text x="450" y="346" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="600" fill="#6cb0ff">no_vanishing_restricted · no_contraction_restricted</text>
+<rect x="30" y="382" width="820" height="84" rx="8" fill="#161b22" stroke="#30363d"/>
+<text x="48" y="408" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#e6edf3">What the machines say</text>
+<text x="48" y="430" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#9198a1">unrestricted_counterexample ⇒ admitted     ·     counterexample_not_armed ⇒ forbidden twice</text>
+<text x="48" y="452" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" font-weight="400" fill="#e6edf3">Not a proof of safety — a proof of why safety requires a structural guard.</text>
+</svg>

@@ -48,6 +48,6 @@ lake env lean ../reproducer/minimal-reproducer.lean > /tmp/dcare-reproducer.txt 
   exit 1
 }
 cat /tmp/dcare-reproducer.txt
-echo '--- "sorry" occurrences in Dcare/ (comments included; zero proofs) ---'
+echo '--- remaining sorry word occurrences (docstring mentions; zero live sorries) ---'
 rg -c "sorry" Dcare/ || true
 echo 'PASS'
