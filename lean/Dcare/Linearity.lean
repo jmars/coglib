@@ -1,35 +1,31 @@
 import Dcare.Typing
-import Dcare.Model
 import Dcare.Count
 
 /-!
 # The linearity discipline
 
-Paper-facing statements, now derivation-indexed (`uses`, `Dcare.Count`):
-with split-only rules, flat term-indexed counting is unmoored, so the
-old `occ` was retired (superseded by `Dcare.uses`).
+Paper-facing statements, derivation-indexed (`uses`, `Dcare.Count`).
 
-PROVEN here: `no_weakening_content` — the counting lemma's instance at
-`content`: every derivation at a lone content hypothesis spends it
-exactly once.
+BOTH classical statements are decided, in opposite directions:
 
-STILL OPEN (the two unrestricted classical statements):
-- `no_contraction_content` — needs the UPPER bound (`uses ≤ 1` for
-  linear hypotheses, i.e. no rule spends a linear hypothesis twice) plus
-  pair/lete inversion and the barren model for the closed side.
-- `no_vanishing` — needs the flow/weight analysis: content must surface
-  in the conclusion's structure or be archived (trace is the only sink).
+- `no_contraction_content` — PROVED below, by the monotone counting
+  model (`ContractionModel`): `unit` read `⊤`, soundness at all
+  seventeen rules with no hypothesis, `content ⊗ content` costs `2`
+  where `[content]` costs `1`.
+- `no_vanishing` — REFUTED in the unrestricted calculus (an explicit
+  `[content] ⊢ unit` derivation exists; see the note at the deletion
+  site below, and `Dcare.Adversarial.Unrestricted`). The surviving law
+  is the Guarded kernel's `no_vanishing_restricted`.
 
-The path machinery for both is in `Dcare.Path`: size/Sub (derivation
-measure + subderivation relation), cprop/sprop/tprop (content/stream/
-trace-need propagation, the kprop template with the ARROW TRIPLE
-conjunction), tFlowEq (the trace-token flow equality — the journey lemma
-as arithmetic), and the closed-liveness base (no closed stream/content/
-knower). The remaining obligation induction is mapped in the plan node.
+Also here: `no_weakening_content` (the counting lemma's instance at
+`content`) and `archival_witness` (the surviving legal pattern —
+reception without reduction). The fragment ladder and the falsification
+record live in `Dcare.Path`/`Dcare.SC`.
 
 Constraint carried from the objective doc: if a proof ever requires
 weakening the linearity of `content`, the derivation depends on what it
-denies, and the paper halts.
+denies, and the paper halts. (The terminal proof respects it: the
+monotone model weakens nothing — `content` is `{w | 1 ≤ w}` throughout.)
 -/
 
 namespace Dcare
@@ -93,15 +89,6 @@ theorem uCtx_append : ∀ {Γ Δ : List Ty} {w : Nat}, uCtx (Γ ++ Δ) w →
       obtain ⟨m', n', hG, hD, he'⟩ := uCtx_append hrest
       exact ⟨m + m', n', ⟨m, m', ha, hG, rfl⟩, hD, by omega⟩
 
-theorem uCtx_append_of : ∀ {Γ Δ : List Ty} {m n : Nat}, uCtx Γ m → uCtx Δ n →
-    uCtx (Γ ++ Δ) (m + n)
-  | [], Δ, m, n, hΓ, hΔ => by
-      rw [show m = 0 from hΓ]
-      simpa using hΔ
-  | a :: Γ', Δ, m, n, hΓ, hΔ => by
-      obtain ⟨m1, m2, ha, hrest, he⟩ := uCtx_cons hΓ
-      exact ⟨m1, m2 + n, ha, uCtx_append_of hrest hΔ, by rw [he]; omega⟩
-
 /-- `content ⊗ content` at budget `w` iff `2 ≤ w` — the arithmetic that
 is the theorem. -/
 theorem uInterp_CxC (w : Nat) :
@@ -142,78 +129,46 @@ theorem uMono : ∀ (τ : Ty) {w w' : Nat}, w ≤ w' → uInterp τ w → uInter
       exact uMono b (by omega) (h n hn)
   | .unit, _, _, _, _ => True.intro
 
-/-- The three-way classification at the `⊤`-unit reading. -/
-theorem uThreeWay (τ : Ty) (hlin : τ.isLinear = false) :
-    (∀ w, ¬ uInterp τ w) ∨ (∀ w, uInterp τ w ↔ w = 0) ∨ (∀ w, uInterp τ w) := by
-  cases τ with
+/-- THE TWO-WAY CLASSIFICATION at the `⊤`-unit reading: a non-linear
+type's interpretation is empty or everything. The three-way middle case
+(`{0}`) is VACUOUS here — no base is `{0}` (`unit` is `⊤`), and
+tensor/arrow cannot build one from ∅/⊤ — which is the structural
+difference from the `{0}`-unit model in `Dcare.SC` (where `unit` IS the
+middle case, by `Iff.rfl`). LOAD-BEARING for the `contr` arm:
+duplication needs the head funded at `0` or nowhere. -/
+theorem uTwoWay (τ : Ty) (hlin : τ.isLinear = false) :
+    (∀ w, ¬ uInterp τ w) ∨ (∀ w, uInterp τ w) := by
+  induction τ with
   | content => exact Bool.noConfusion hlin
   | knower => exact Or.inl (fun _ hw => hw)
-  | knowledge => exact Or.inr (Or.inr (fun _ => True.intro))
-  | value => exact Or.inr (Or.inr (fun _ => True.intro))
+  | knowledge => exact Or.inr (fun _ => True.intro)
+  | value => exact Or.inr (fun _ => True.intro)
   | stream => exact Bool.noConfusion hlin
   | trace => exact Bool.noConfusion hlin
-  | unit => exact Or.inr (Or.inr (fun _ => True.intro))
-  | later a => exact Or.inr (Or.inr (fun _ => True.intro))
-  | tensor a b =>
+  | unit => exact Or.inr (fun _ => True.intro)
+  | later a _ => exact Or.inr (fun _ => True.intro)
+  | tensor a b iha ihb =>
       have h' := Bool.or_eq_false_iff.mp (by simpa only [Ty.isLinear] using hlin)
-      rcases uThreeWay a h'.1 with haE | haZ | haT <;>
-        rcases uThreeWay b h'.2 with hbE | hbZ | hbT
-      · exact Or.inl (fun w hw => by
-          obtain ⟨m, _, hm, _, _⟩ := hw; exact haE m hm)
+      rcases iha h'.1 with haE | haT <;> rcases ihb h'.2 with hbE | hbT
       · exact Or.inl (fun w hw => by
           obtain ⟨m, _, hm, _, _⟩ := hw; exact haE m hm)
       · exact Or.inl (fun w hw => by
           obtain ⟨m, _, hm, _, _⟩ := hw; exact haE m hm)
       · exact Or.inl (fun w hw => by
           obtain ⟨_, n, _, hn, _⟩ := hw; exact hbE n hn)
-      · exact Or.inr (Or.inl (fun w => Iff.intro
-          (fun hw => by
-            obtain ⟨m, n, hm, hn, he⟩ := hw
-            have h1 := (haZ m).mp hm
-            have h2 := (hbZ n).mp hn
-            omega)
-          (fun hw => ⟨0, 0, (haZ 0).mpr rfl, (hbZ 0).mpr rfl, by omega⟩)))
-      · exact Or.inr (Or.inr (fun w =>
-          ⟨0, w, (haZ 0).mpr rfl, hbT w, by omega⟩))
-      · exact Or.inl (fun w hw => by
-          obtain ⟨_, n, _, hn, _⟩ := hw; exact hbE n hn)
-      · exact Or.inr (Or.inr (fun w =>
-          ⟨w, 0, haT w, (hbZ 0).mpr rfl, by omega⟩))
-      · exact Or.inr (Or.inr (fun w => ⟨w, 0, haT w, hbT 0, by omega⟩))
-  | arrow a b =>
+      · exact Or.inr (fun w => ⟨w, 0, haT w, hbT 0, by omega⟩)
+  | arrow a b iha ihb =>
       have h' := Bool.or_eq_false_iff.mp (by simpa only [Ty.isLinear] using hlin)
-      rcases uThreeWay a h'.1 with haE | haZ | haT <;>
-        rcases uThreeWay b h'.2 with hbE | hbZ | hbT
-      · exact Or.inr (Or.inr (fun _ n hn => False.elim (haE n hn)))
-      · exact Or.inr (Or.inr (fun _ n hn => False.elim (haE n hn)))
-      · exact Or.inr (Or.inr (fun _ n hn => False.elim (haE n hn)))
-      · exact Or.inl (fun w H => hbE w (H 0 ((haZ 0).mpr rfl)))
-      · refine Or.inr (Or.inl (fun w => Iff.intro (fun H => ?_) (fun hw n hn => ?_)))
-        · have h1 := H 0 ((haZ 0).mpr rfl)
-          have h2 := (hbZ (w + 0)).mp h1
-          omega
-        · have hn0 : n = 0 := (haZ n).mp hn
-          exact (hbZ (w + n)).mpr (by omega)
-      · exact Or.inr (Or.inr (fun w n hn => hbT (w + n)))
+      rcases iha h'.1 with haE | haT <;> rcases ihb h'.2 with hbE | hbT
+      · exact Or.inr (fun _ _ hn => False.elim (haE _ hn))
+      · exact Or.inr (fun _ _ hn => False.elim (haE _ hn))
       · exact Or.inl (fun w H => hbE w (H 0 (haT 0)))
-      · exact Or.inl (fun w H => by
-          have h1 := H 1 (haT 1)
-          have h2 := (hbZ (w + 1)).mp h1
-          omega)
-      · exact Or.inr (Or.inr (fun w n hn => hbT (w + n)))
-
-/-- The `contr` arm's obligation: a non-linear position is funded at
-`0`, or it is not funded at all. -/
-theorem uZeroAvail (k : Ty) (hk : k.isLinear = false) :
-    uInterp k 0 ∨ (∀ m, ¬ uInterp k m) := by
-  rcases uThreeWay k hk with hE | hZ | hT
-  · exact Or.inr hE
-  · exact Or.inl ((hZ 0).mpr rfl)
-  · exact Or.inl (hT 0)
+      · exact Or.inr (fun _ n _ => hbT _)
 
 /-- SOUNDNESS — all seventeen constructors, NO hypothesis. The `weak`
-arm is `uMono`; the `contr` arm is `uZeroAvail`; the `fix` arm is the
-`⊤` guard (the crossed arrow at `w` gives `a` at `w + 0`). -/
+arm is `uMono`; the `contr` arm is `uTwoWay` (the head is funded at `0`
+or nowhere — one budget cannot fund the duplicated copy); the `fix`
+arm is the `⊤` guard (the crossed arrow at `w` gives `a` at `w + 0`). -/
 theorem uSound : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (_h : Typed Γ t τ),
     ∀ w, uCtx Γ w → uInterp τ w
   | _, _, _, Typed.var, w, hw => by
@@ -262,11 +217,9 @@ theorem uSound : ∀ {Γ : List Ty} {t : Term} {τ : Ty} (_h : Typed Γ t τ),
   | _, _, _, Typed.terminate, w, hw => fun n hn => False.elim hn
   | _, _, _, @Typed.contr Γ k t τ hk h, w, hw => by
       obtain ⟨m, n, hkm, hΓn, he⟩ := uCtx_cons hw
-      rcases uZeroAvail k hk with h0 | hempty
-      · have hkk : uCtx (k :: k :: Γ) w :=
-          ⟨0, m + n, h0, ⟨m, n, hkm, hΓn, rfl⟩, by omega⟩
-        exact uSound h w hkk
-      · exact False.elim (hempty m hkm)
+      rcases uTwoWay k hk with hE | hT
+      · exact False.elim (hE m hkm)
+      · exact uSound h w ⟨0, w, hT 0, ⟨m, n, hkm, hΓn, he⟩, (Nat.zero_add w).symm⟩
   | _, _, _, @Typed.weak Γ k t τ hk h, w, hw => by
       obtain ⟨m, n, hkm, hΓn, he⟩ := uCtx_cons hw
       have hres := uSound h n hΓn

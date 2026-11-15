@@ -45,6 +45,7 @@ removes.
 | `diagrams/` | the two figures above as SVG, each a light/dark pair selected with `<picture>` |
 | `paper.pdf` | the paper rendered to PDF, generated from `paper/paper.md`: `pandoc paper/paper.md --pdf-engine=typst -o paper.pdf` |
 | `lean/` | the Lean 4 development — the library `Dcare`, the two formal systems (`Dcare/Adversarial/` the unrestricted baseline, `Dcare/Kernel/` the Guarded kernel), the sequent-calculus presentation (`Dcare/SC.lean`), and `Audit.lean` (the axiom audit, run by the gate and not part of the library) |
+| `reproducer/minimal-reproducer.lean` | **the minimal reproducer** — one file, ~430 lines, no imports, no Mathlib, no build: ILL's natural-deduction shape plus the two deltas that matter (ordered splits; sort-keyed linearity with no modality), the counterexample to vanishing, the monotone counting model that proves contraction, and the check that the same model accepts the counterexample. Both laws decided in one file; the gate compiles it |
 | `scripts/lean-check.sh` | the gate: build, axiom audit (no `T2_postulate`, **zero** `sorryAx`), no public file importing the restricted companion |
 | `scripts/sync-check.sh` | the paper gate: every backtick-quoted identifier in the paper matches a real declaration in `lean/Dcare/` |
 

@@ -4230,22 +4230,6 @@ theorem wCtx_append_of : ∀ {Γ Δ : List Ty} {m n : Nat}, wCtx Γ m → wCtx �
       obtain ⟨m1, m2, ha, hrest, he⟩ := wCtx_cons hΓ
       exact ⟨m1, m2 + n, ha, wCtx_append_of hrest hΔ, by rw [he]; omega⟩
 
-theorem wCtx_cons_tail {a : Ty} {Γ : List Ty} (h : wCtx (a :: Γ) 0) :
-    wCtx Γ 0 := by
-  obtain ⟨m, n, _, hn, he⟩ := wCtx_cons h
-  have hn0 : n = 0 := by omega
-  rw [← hn0]
-  exact hn
-
-/-- A prefix of a zero-budget context is funded at zero. -/
-theorem wCtx_prefix {Γf Γ₁ Γ : List Ty} (hs : Γf ++ Γ₁ = Γ) (h : wCtx Γ 0) :
-    wCtx Γf 0 := by
-  rw [← hs] at h
-  obtain ⟨m, n, hm, _, he⟩ := wCtx_append (Γ := Γf) (Δ := Γ₁) h
-  have hm0 : m = 0 := by omega
-  rw [← hm0]
-  exact hm
-
 /-- THE FRAME'S OWN FUNDING: sides funded at zero, the content position
 at `1`, so the whole frame costs exactly `1`. -/
 theorem wCtx_frame {Γ Δ : List Ty} (hΓ : wCtx Γ 0) (hΔ : wCtx Δ 0) :
@@ -4254,13 +4238,6 @@ theorem wCtx_frame {Γ Δ : List Ty} (hΓ : wCtx Γ 0) (hΔ : wCtx Δ 0) :
   have hrest : wCtx (Ty.content :: Δ) 1 := ⟨1, 0, hc, hΔ, by omega⟩
   have := wCtx_append_of (Γ := Γ) (Δ := Ty.content :: Δ) (m := 0) (n := 1) hΓ hrest
   simpa using this
-
-/-- The sides' zero budget, from ZeroW plus funding. -/
-theorem wCtx_zero_of_funded {Γ : List Ty}
-    (hZ : ∀ p, p ∈ Γ → ZeroW p) (hf : ∃ w, wCtx Γ w) : wCtx Γ 0 := by
-  obtain ⟨w, hw⟩ := hf
-  rw [← wCtx_zero_of_zeroW hw hZ]
-  exact hw
 
 /-- THE FRAME KILL: a `unit` conclusion at a frame whose sides are
 funded at zero and whose weak heads are neutral is impossible.
@@ -4273,16 +4250,6 @@ theorem no_unit_at_frame_of_zeroWeak {Γ Δ : List Ty} {t : Term}
   have h1 : wInterp Ty.unit 1 := sound_of_zeroWeak h hW 1 hw
   have h1' : (1 : Nat) = 0 := h1
   omega
-
-/-- The same theorem with ZeroW sides instead of `wCtx · 0`, plus the
-funding hypothesis. -/
-theorem no_unit_at_frame_of_zeroWeak_funded {Γ Δ : List Ty} {t : Term}
-    (h : Typed (Γ ++ Ty.content :: Δ) t Ty.unit)
-    (hΓ : ∀ p, p ∈ Γ → ZeroW p) (hΔ : ∀ p, p ∈ Δ → ZeroW p)
-    (fΓ : ∃ w, wCtx Γ w) (fΔ : ∃ w, wCtx Δ w)
-    (hW : ∀ k, k ∈ weakHeads h → ZeroW k) : False :=
-  no_unit_at_frame_of_zeroWeak h (wCtx_zero_of_funded hΓ fΓ)
-    (wCtx_zero_of_funded hΔ fΔ) hW
 
 /-- Round 1 re-derived as the `[]`/`[]` instance. -/
 theorem no_vanishing_frame_singleton {t : Term}
@@ -5119,7 +5086,7 @@ end SCProvenance3
 
 /-! ## THE CONTRACTION TWIN — the same treatment, and the opposite verdict (probe scContraction, transfer-landed)
 
-`no_contraction_content` (Linearity.lean:40) got the same falsify-first
+`no_contraction_content` (Linearity.lean) got the same falsify-first
 hunt that refuted its twin — and SURVIVES it, for a measured reason:
 the minting contraction EXISTS one frame up (`[knower] ⊢ C⊗C`,
 `[knower, content] ⊢ C⊗C`, `[content, knower] ⊢ C⊗C`,

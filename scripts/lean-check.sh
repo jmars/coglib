@@ -41,6 +41,13 @@ if rg -n "import +(Restricted|restricted)\.|Dcare\.Restricted|\.\./restricted" D
   echo 'FAIL: a public file references restricted/' >&2
   exit 1
 fi
+echo '--- minimal reproducer (standalone: no imports, no Mathlib, no build) ---'
+lake env lean ../reproducer/minimal-reproducer.lean > /tmp/dcare-reproducer.txt 2>&1 || {
+  cat /tmp/dcare-reproducer.txt
+  echo 'FAIL: the minimal reproducer does not compile' >&2
+  exit 1
+}
+cat /tmp/dcare-reproducer.txt
 echo '--- "sorry" occurrences in Dcare/ (comments included; zero proofs) ---'
 rg -c "sorry" Dcare/ || true
 echo 'PASS'
