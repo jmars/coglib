@@ -558,3 +558,6 @@ Rules:
 #print axioms Dcare.SCContraction.content_redex_not_var
 #print axioms Dcare.SCContraction.contractionContentKnower
 #print axioms Dcare.SCContraction.contractionTwoKnowers
+#print axioms Dcare.weakHeads_nil_of_noweak
+#print axioms Dcare.no_vanishing_noweak
+#print axioms Dcare.no_contraction_noweak

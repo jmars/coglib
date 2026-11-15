@@ -5386,4 +5386,89 @@ def contractionTwoKnowers :
     rfl
 
 end SCContraction
+
+/-! ## The no-weak fragment's two laws — landed where the record promised them
+
+The fragment record at the NoWeakFrag section (and the paper's §5)
+cite `no_vanishing_noweak` and `no_contraction_noweak`; these are the
+declarations. Both are the counting model's verdict at the no-weak
+grain: a `NoWeak` tree has no weak heads at all
+(`weakHeads_nil_of_noweak`), so the model's weak-arm obligation is
+vacuous, and `fix` is sound unconditionally (the guard reads ⊤) — the
+fragment is everything except `weak`. (The Guarded kernel's
+`no_vanishing_restricted`/`no_contraction_restricted` are these two
+theorems under the kernel's names.) -/
+
+open SCExtractor SCProvenance
+/-- A `NoWeak` tree lists no weak heads: the counting model's weak-arm
+obligation is vacuous for it. (17 arms; the `weak` arm is `False` by
+the definition.) -/
+theorem weakHeads_nil_of_noweak : ∀ {Γ : List Ty} {t : Term} {τ : Ty}
+    (h : Typed Γ t τ), NoWeakFrag.NoWeak h → weakHeads h = []
+  | _, _, _, Typed.var, _ => rfl
+  | _, _, _, @Typed.lam _ _ _ _ h, hN => weakHeads_nil_of_noweak h hN
+  | _, _, _, @Typed.app _ _ _ _ _ _ _ hf ha hs, hN => by
+      obtain ⟨h1, h2⟩ := hN
+      show weakHeads hf ++ weakHeads ha = []
+      rw [weakHeads_nil_of_noweak hf h1, weakHeads_nil_of_noweak ha h2]
+      rfl
+  | _, _, _, @Typed.pair _ _ _ _ _ _ _ hl hr hs, hN => by
+      obtain ⟨h1, h2⟩ := hN
+      show weakHeads hl ++ weakHeads hr = []
+      rw [weakHeads_nil_of_noweak hl h1, weakHeads_nil_of_noweak hr h2]
+      rfl
+  | _, _, _, @Typed.lete _ _ _ _ _ _ _ _ ht hb hs, hN => by
+      obtain ⟨h1, h2⟩ := hN
+      show weakHeads ht ++ weakHeads hb = []
+      rw [weakHeads_nil_of_noweak ht h1, weakHeads_nil_of_noweak hb h2]
+      rfl
+  | _, _, _, Typed.unit, _ => rfl
+  | _, _, _, @Typed.next _ _ _ h, hN => weakHeads_nil_of_noweak h hN
+  | _, _, _, @Typed.fix _ _ _ _ h, hN => weakHeads_nil_of_noweak h hN
+  | _, _, _, @Typed.cons _ _ _ _ _ hc ht hs, hN => by
+      obtain ⟨h1, h2⟩ := hN
+      show weakHeads hc ++ weakHeads ht = []
+      rw [weakHeads_nil_of_noweak hc h1, weakHeads_nil_of_noweak ht h2]
+      rfl
+  | _, _, _, Typed.nil, _ => rfl
+  | _, _, _, @Typed.snoc _ _ _ _ _ ht hu hs, hN => by
+      obtain ⟨h1, h2⟩ := hN
+      show weakHeads ht ++ weakHeads hu = []
+      rw [weakHeads_nil_of_noweak ht h1, weakHeads_nil_of_noweak hu h2]
+      rfl
+  | _, _, _, Typed.gen, _ => rfl
+  | _, _, _, Typed.red, _ => rfl
+  | _, _, _, Typed.obj, _ => rfl
+  | _, _, _, Typed.terminate, _ => rfl
+  | _, _, _, @Typed.contr _ _ _ _ _ h, hN => weakHeads_nil_of_noweak h hN
+  | _, _, _, @Typed.weak _ _ _ _ _ _, hN => by
+      exact absurd hN (fun h => h)
+
+/-- The no-weak fragment's UNITARITY law, as promised by the fragment
+record and cited by the paper: `[content] ⊬ unit` in every tree with no
+`weak` node — `fix` included, `gen`/`contr`/`cons`/`snoc`/the constants
+inside. -/
+theorem no_vanishing_noweak {t : Term} (h : Typed [Ty.content] t Ty.unit)
+    (hN : NoWeakFrag.NoWeak h) : False :=
+  no_vanishing_of_zeroWeak h (by
+    intro k hk
+    rw [weakHeads_nil_of_noweak h hN] at hk
+    exact absurd hk (by simp))
+
+/-- The no-weak fragment's NO-CLONING law: `[content] ⊬ content ⊗ content`
+in every tree with no `weak` node. The arithmetic: the frame costs `1`,
+but `content ⊗ content` needs `m + n` with both `≥ 1`. -/
+theorem no_contraction_noweak {t : Term}
+    (h : Typed [Ty.content] t (Ty.tensor Ty.content Ty.content))
+    (hN : NoWeakFrag.NoWeak h) : False := by
+  have hW : ∀ k, k ∈ weakHeads h → ZeroW k := by
+    intro k hk
+    rw [weakHeads_nil_of_noweak h hN] at hk
+    exact absurd hk (by simp)
+  have hw : wCtx [Ty.content] 1 := ⟨1, 0, Nat.le_refl 1, rfl, by omega⟩
+  have hI := sound_of_zeroWeak h hW 1 hw
+  obtain ⟨m, n, hm, hn, he⟩ := hI
+  have h1 : 1 ≤ m := hm
+  have h2 : 1 ≤ n := hn
+  omega
 end Dcare

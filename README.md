@@ -58,13 +58,13 @@ cd .. && ./scripts/lean-check.sh   # build + axiom audit + disclosure check
 ./scripts/sync-check.sh            # paper anchors vs real declarations
 ```
 
-**One anchor is currently unbacked, and the gate says so.** `sync-check.sh` fails
-on `no_vanishing_noweak`, cited in the paper's §5 fragment record: that name is
-recorded in `Dcare/SC.lean` only inside a documentation block, and no theorem in
-the built library carries a `NoWeak` hypothesis. The neighbouring fragments the
-same sentence cites — `no_vanishing_clean` (Path.lean), `no_vanishing_of_zeroWeak`
-(SC.lean), `no_vanishing_fix_conditional` (Chase.lean) — all resolve. The gate
-fails rather than passing, and the count is reported: that is the gate working.
+**90 anchors, all resolved** against the development in this repository. The
+fragment record the paper's §5 keeps — `no_vanishing_clean` (Path.lean),
+`no_vanishing_of_zeroWeak` (SC.lean), `no_vanishing_noweak`, `no_contraction_noweak`,
+`no_vanishing_fix_conditional` (Chase.lean) — is checked name by name, and a name
+the development does not declare fails the gate rather than passing quietly. That
+is how a dangling anchor in this paper was caught and landed as a declaration
+(`no_vanishing_noweak`, SC.lean, axioms `[propext, Quot.sound]`).
 
 The audit is per-theorem: every public theorem's axiom list is printed, and
 only the standard three (`propext`, `Classical.choice`, `Quot.sound`) are
